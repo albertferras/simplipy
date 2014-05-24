@@ -13,7 +13,6 @@ import tools
 import copy
 import grid
 import time
-import debugsimp
 import progress
 # GEOMETRY_TYPES = {
 #     #0: "GeometryCollection",
@@ -285,7 +284,6 @@ class ChainDB(object):
 
 
     def simplify_keys(self, keys, simplifier, push_progress=None, **kwargs):
-        debugsimp.clear()
         self.junction_points = JunctionPoints()
         if self.constraint_use_topology:
             self.infer_topology()
@@ -346,7 +344,6 @@ class ChainDB(object):
         for (c,chain) in enumerate(self.chains):
             if chain is None:
                 continue
-            debugsimp.add_chain(str(c)+":"+str(chain[self.CHAIN_PARENTS])+":"+str(id(chain[self.CHAIN_POINTS])), map(lambda p: p[P_COORD], chain[self.CHAIN_POINTS]), key="chains")
 
     def print_chains(self):
         print "chains:"
@@ -358,7 +355,7 @@ class ChainDB(object):
                 print c,"->", chain[self.CHAIN_PARENTS],":", id(points), len(points),"points"
 
     def infer_topology(self):
-        debug = True
+        debug = False
         if debug:
             self.print_geoms()
             self.print_chains()
@@ -499,7 +496,6 @@ class ChainDB(object):
                                 self.chains.append(([parents[0]], subchain))
                                 dbg = "new"
                             mark_junction_to_junction_chain(start_key, key, chain_idx2)
-                            #debugsimp.add_chain("%s:%s-%s=%s" % (c, i, j, chain_idx2), map(lambda p: p[P_COORD], subchain), key="split")
                         else:
                             chain_created = True
                             subchain = self.chains[chain_idx2][self.CHAIN_POINTS] # two chains from distinct polygons will share the memory space
@@ -537,7 +533,6 @@ class ChainDB(object):
         if debug:
             self.print_geoms()
             self.paint_chains()
-            debugsimp.commit()
 
 
     def is_connected_by_junction(self, line1, line2, tolerance=0.01):
@@ -640,7 +635,6 @@ class ChainDB(object):
             repaired |= self._repair_intersections(cs, iter_k, epsilon, debug)
             iter_k = iter_k_next
             iterations += 1
-            if debug: debugsimp.commit()
 
             print "iteration time = %.2f" % (time.time() - t)
         print "Total time = %.2f" % (time.time() - tstart)
@@ -664,8 +658,6 @@ class ChainDB(object):
             #if is_original_segment(seg_id):
             #    continue
             line1 = cs.get_segment_coordinates(seg_id)
-            if debug:
-                debugsimp.add_line(seg_id, line1[0], line1[1], key="segcheck")
             for seg_id2 in cs.G.hit(line1):
                 if seg_id == seg_id2:
                     continue
@@ -691,11 +683,6 @@ class ChainDB(object):
 
             lineA = cs.get_segment_coordinates(segA_id)
             lineB = cs.get_segment_coordinates(segB_id)
-
-            if debug:
-                dbg = "%s:%s" % (segA_id, segB_id)
-                p1 = debugsimp.add_line(dbg, lineA[0], lineA[-1], iteration=self._iteration, key="int")
-                p2 = debugsimp.add_line(dbg, lineB[0], lineB[-1], iteration=self._iteration, key="int")
 
             if sa is None or sb is None: # If this intersection was fixed in a previously iteration
                 if debug: print "Skip %s %s" % (p1, p2)
@@ -736,7 +723,6 @@ class ChainDB(object):
                     # never check this again. intersection can't be fixed
                     if debug:
                         print "Unfixable %s %s" % (p1, p2)
-                        debugsimp.add_line("Unfixable", lineS[0], lineS[-1])
                     continue
 
             # Construct detour graph, G(s), corresponding to s.
