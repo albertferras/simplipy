@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'ui_simplipy.ui'
 #
-# Created: Sun Jun  1 13:35:52 2014
+# Created: Sun Jun  1 18:18:24 2014
 #      by: PyQt4 UI code generator 4.9.1
 #
 # WARNING! All changes made in this file will be lost!
@@ -152,6 +152,9 @@ class Ui_simplipy(object):
         self.horizontalLayout_2.addWidget(self.label)
         self.option_epsilon = QtGui.QDoubleSpinBox(self.alg_parameter_group_douglas)
         self.option_epsilon.setMaximumSize(QtCore.QSize(100, 16777215))
+        self.option_epsilon.setSpecialValueText(_fromUtf8(""))
+        self.option_epsilon.setPrefix(_fromUtf8(""))
+        self.option_epsilon.setSuffix(_fromUtf8(""))
         self.option_epsilon.setDecimals(5)
         self.option_epsilon.setMinimum(0.0)
         self.option_epsilon.setMaximum(999999999.0)
@@ -348,7 +351,7 @@ class Ui_simplipy(object):
         self.radio_alg_douglas.setText(QtGui.QApplication.translate("simplipy", "Douglas-Peucker", None, QtGui.QApplication.UnicodeUTF8))
         self.radio_alg_visvalingam.setText(QtGui.QApplication.translate("simplipy", "Visvalingam", None, QtGui.QApplication.UnicodeUTF8))
         self.group_Options.setTitle(QtGui.QApplication.translate("simplipy", "Parameters", None, QtGui.QApplication.UnicodeUTF8))
-        self.label.setText(QtGui.QApplication.translate("simplipy", "Epsilon:", None, QtGui.QApplication.UnicodeUTF8))
+        self.label.setText(QtGui.QApplication.translate("simplipy", "Tolerance:", None, QtGui.QApplication.UnicodeUTF8))
         self.label_3.setText(QtGui.QApplication.translate("simplipy", "Partition by (ring to chain):", None, QtGui.QApplication.UnicodeUTF8))
         self.option_douglas_firstandlast.setText(QtGui.QApplication.translate("simplipy", "First and last", None, QtGui.QApplication.UnicodeUTF8))
         self.option_douglas_firstandfurthest.setToolTip(QtGui.QApplication.translate("simplipy", "<html><head/><body><p>The first point is the first point in the polygon. The end point is the point with maximum distance to the first point.</p></body></html>", None, QtGui.QApplication.UnicodeUTF8))

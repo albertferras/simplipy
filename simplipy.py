@@ -43,6 +43,7 @@ starting_points_qobj = { # TODO PARSE AND USE IN CHAINDB
     ChainDB.STARTING_POINT_DIAMETERPOINTS: 'option_douglas_diameterpoints',
 }
 
+
 simplify_algorithms = {
     "douglas": {
         'function': douglaspeucker,
@@ -356,7 +357,9 @@ class simplipy:
         for parameter_name, parameter in simplify_algorithms[alg_id]['parameters'].items():
             #self.log(str(type(parameter['qobj'])))
             qobj = parameter['qobj']
-            if isinstance(qobj, (QLineEdit, QDoubleSpinBox, QSpinBox)):
+            if isinstance(qobj, QDoubleSpinBox):
+                value = qobj.value()
+            elif isinstance(qobj, (QLineEdit, QSpinBox)):
                 value = qobj.text()
             elif isinstance(qobj, QRadioButton):
                 value = qobj.isChecked()
