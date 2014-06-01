@@ -29,9 +29,13 @@ import progress
 #     return GEOMETRY_TYPES[geom.GetGeometryType()]
 
 #import quadtree
-from shapely import speedups
 import sys
-speedups.enable()
+try:
+    from shapely import speedups
+    speedups.enable()
+except:
+    print "Couldn't enable shapely speedups. Ignoring"
+    pass
 # --------------------
 
 from collections import Counter
