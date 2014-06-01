@@ -10,7 +10,7 @@
 
 [general]
 name=SimpliPy
-qgisMinimumVersion=2.0
+qgisMinimumVersion=2.2
 description=Simplification tools with constraints
 version=0.31
 author=Albert Ferràs
