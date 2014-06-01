@@ -342,12 +342,12 @@ class simplipy:
         constraints['simplify_shared_edges'] = self.dlg.ui.cnstr_sharededges.isChecked()
         constraints['simplify_non_shared_edges'] = self.dlg.ui.cnstr_nonsharededges.isChecked()
         constraints['repair_intersections'] = self.dlg.ui.cnstr_repairintersections.isChecked()
-        constraints['repair_intersections_precision'] = float(self.dlg.ui.doubleSpinBox_precision_repair.text())
+        constraints['repair_intersections_precision'] = float(self.dlg.ui.doubleSpinBox_precision_repair.value())
         constraints['prevent_shape_removal'] = self.dlg.ui.cnstr_preventshaperemoval.isChecked()
-        constraints['prevent_shape_removal_min_points'] = int(self.dlg.ui.spinBox_min_points.text())
+        constraints['prevent_shape_removal_min_points'] = int(self.dlg.ui.spinBox_min_points.value())
 
         constraints['use_topology'] = self.dlg.ui.cnstr_usetopology.isChecked()
-        constraints['use_topology_snap_precision'] = float(self.dlg.ui.doubleSpinBox_snap_precision.text())
+        constraints['use_topology_snap_precision'] = float(self.dlg.ui.doubleSpinBox_snap_precision.value())
 
         return constraints
 
