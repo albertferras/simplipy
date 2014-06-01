@@ -12,7 +12,7 @@
 name=SimpliPy
 qgisMinimumVersion=2.0
 description=Simplification tools with constraints
-version=0.21
+version=0.3
 author=Albert Ferràs
 email=albertferras@gmail.com
 
@@ -26,10 +26,10 @@ email=albertferras@gmail.com
 # tags are comma separated with spaces allowed
 tags=
 
-homepage=
-tracker=
-repository=
-icon=icon.png
+homepage=https://github.com/albertferras/simplipy
+tracker=https://github.com/albertferras/simplipy/issues
+repository=https://github.com/albertferras/simplipy
+icon=simplipy.png
 # experimental flag
 experimental=False
 
