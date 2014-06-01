@@ -1,5 +1,5 @@
 <RCC>
     <qresource prefix="/plugins/simplipy" >
-        <file>icon.png</file>
+        <file>simplipy.png</file>
     </qresource>
 </RCC>

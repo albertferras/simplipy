@@ -35,7 +35,7 @@ PLUGINNAME = simplipy
 
 PY_FILES = simplipy.py simplipydialog.py __init__.py
 
-EXTRAS = icon.png metadata.txt
+EXTRAS = simplipy.png metadata.txt
 
 UI_FILES = ui_simplipy.py
 

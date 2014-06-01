@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'ui_simplipy.ui'
 #
-# Created: Fri Apr 18 14:26:23 2014
+# Created: Sun Jun  1 13:35:52 2014
 #      by: PyQt4 UI code generator 4.9.1
 #
 # WARNING! All changes made in this file will be lost!
@@ -91,21 +91,13 @@ class Ui_simplipy(object):
         self.verticalLayout_6.setSpacing(0)
         self.verticalLayout_6.setObjectName(_fromUtf8("verticalLayout_6"))
         self.radio_output_newlayer = QtGui.QRadioButton(self.groupOutput)
+        self.radio_output_newlayer.setEnabled(True)
         self.radio_output_newlayer.setChecked(True)
         self.radio_output_newlayer.setObjectName(_fromUtf8("radio_output_newlayer"))
         self.verticalLayout_6.addWidget(self.radio_output_newlayer)
-        self.horizontalLayout_7 = QtGui.QHBoxLayout()
-        self.horizontalLayout_7.setObjectName(_fromUtf8("horizontalLayout_7"))
-        self.radio_output_attribute = QtGui.QRadioButton(self.groupOutput)
-        self.radio_output_attribute.setMaximumSize(QtCore.QSize(70, 16777215))
-        self.radio_output_attribute.setObjectName(_fromUtf8("radio_output_attribute"))
-        self.horizontalLayout_7.addWidget(self.radio_output_attribute)
-        self.output_field_attribute = QtGui.QComboBox(self.groupOutput)
-        self.output_field_attribute.setMinimumSize(QtCore.QSize(0, 0))
-        self.output_field_attribute.setMaximumSize(QtCore.QSize(16777215, 16777215))
-        self.output_field_attribute.setObjectName(_fromUtf8("output_field_attribute"))
-        self.horizontalLayout_7.addWidget(self.output_field_attribute)
-        self.verticalLayout_6.addLayout(self.horizontalLayout_7)
+        self.radio_output_newlayerhidden = QtGui.QRadioButton(self.groupOutput)
+        self.radio_output_newlayerhidden.setObjectName(_fromUtf8("radio_output_newlayerhidden"))
+        self.verticalLayout_6.addWidget(self.radio_output_newlayerhidden)
         spacerItem = QtGui.QSpacerItem(20, 70, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
         self.verticalLayout_6.addItem(spacerItem)
         self.horizontalLayout_5.addWidget(self.groupOutput)
@@ -350,8 +342,8 @@ class Ui_simplipy(object):
         self.label_2.setText(QtGui.QApplication.translate("simplipy", "Total features:", None, QtGui.QApplication.UnicodeUTF8))
         self.label_total_features.setText(QtGui.QApplication.translate("simplipy", "0", None, QtGui.QApplication.UnicodeUTF8))
         self.groupOutput.setTitle(QtGui.QApplication.translate("simplipy", "Output", None, QtGui.QApplication.UnicodeUTF8))
-        self.radio_output_newlayer.setText(QtGui.QApplication.translate("simplipy", "Create new layer", None, QtGui.QApplication.UnicodeUTF8))
-        self.radio_output_attribute.setText(QtGui.QApplication.translate("simplipy", "Field:", None, QtGui.QApplication.UnicodeUTF8))
+        self.radio_output_newlayer.setText(QtGui.QApplication.translate("simplipy", "Add result to canvas (visible layer)", None, QtGui.QApplication.UnicodeUTF8))
+        self.radio_output_newlayerhidden.setText(QtGui.QApplication.translate("simplipy", "Add result to canvas (hidden layer)", None, QtGui.QApplication.UnicodeUTF8))
         self.group_Algorithm.setTitle(QtGui.QApplication.translate("simplipy", "Algorithms", None, QtGui.QApplication.UnicodeUTF8))
         self.radio_alg_douglas.setText(QtGui.QApplication.translate("simplipy", "Douglas-Peucker", None, QtGui.QApplication.UnicodeUTF8))
         self.radio_alg_visvalingam.setText(QtGui.QApplication.translate("simplipy", "Visvalingam", None, QtGui.QApplication.UnicodeUTF8))

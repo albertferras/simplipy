@@ -101,7 +101,8 @@ def debug(x):
 geometryTypeMap = {0: "Point", 1: "LineString", 2: "Polygon"}
 
 OUTPUT_NEWLAYER = 1
-OUTPUT_ATTRIBUTE = 2
+OUTPUT_NEWLAYER_HIDDEN = 2
+#OUTPUT_ATTRIBUTE = 3 # disabled
 
 
 class simplipy:
@@ -132,7 +133,7 @@ class simplipy:
     def initGui(self):
         # Create action that will start plugin configuration
         self.action = QAction(
-            QIcon(":/plugins/simplipy/icon.png"),
+            QIcon(":/plugins/simplipy/simplipy.png"),
             u"Advanced geometry simplification", self.iface.mainWindow())
         # connect the action to the run method
         self.action.triggered.connect(self.run)
@@ -141,7 +142,7 @@ class simplipy:
         QObject.connect(self.dlg.ui.inputlayerComboBox, SIGNAL("currentIndexChanged(QString)"), self.inputlayer_changed)
         QObject.connect(self.dlg.ui.features_selected_radio, SIGNAL("currentIndexChanged(QString)"), self.refresh_feature_count)
         QObject.connect(self.dlg.ui.features_all_radio, SIGNAL("toggled(bool)"), self.refresh_feature_count)
-        QObject.connect(self.dlg.ui.output_field_attribute, SIGNAL("currentIndexChanged(QString)"), self.select_output_field_radio)
+        #QObject.connect(self.dlg.ui.output_field_attribute, SIGNAL("currentIndexChanged(QString)"), self.select_output_field_radio)
 
         QObject.connect(self.dlg.ui.cnstr_expandcontract, SIGNAL("toggled(bool)"), self.refresh_constraint_options_gui)
         QObject.connect(self.dlg.ui.cnstr_repairintersections, SIGNAL("toggled(bool)"), self.refresh_constraint_options_gui)
@@ -208,8 +209,8 @@ class simplipy:
                 L.append(field)
         return L
 
-    def select_output_field_radio(self):
-        self.dlg.ui.radio_output_attribute.setChecked(True)
+    #def select_output_field_radio(self):
+    #    self.dlg.ui.radio_output_attribute.setChecked(True)
 
     def refresh_input_layer_list(self):
         active_layer = self.iface.activeLayer()
@@ -272,25 +273,25 @@ class simplipy:
 
     def inputlayer_changed(self):
         self.refresh_feature_count()
-        self.refresh_output_field_list()
+        #self.refresh_output_field_list()
 
-    def refresh_output_field_list(self):
-        outputfield = self.dlg.ui.output_field_attribute
-        outputfield.clear()
-        selected_layer = self.get_input_layer()
-
-        if selected_layer is not None:
-            for field in self.get_geometry_fields(selected_layer):
-                outputfield.addItem(field.name())
-
-        if outputfield.currentIndex() == -1:
-            outputfield.setDisabled(True)
-            self.dlg.ui.radio_output_attribute.setDisabled(True)
-            outputfield.addItem("geometry field not found")
-        else:
-            outputfield.setDisabled(False)
-            self.dlg.ui.radio_output_attribute.setDisabled(False)
-        self.dlg.ui.radio_output_newlayer.setChecked(True)
+    # def refresh_output_field_list(self):
+    #     outputfield = self.dlg.ui.output_field_attribute
+    #     outputfield.clear()
+    #     selected_layer = self.get_input_layer()
+    #
+    #     if selected_layer is not None:
+    #         for field in self.get_geometry_fields(selected_layer):
+    #             outputfield.addItem(field.name())
+    #
+    #     if outputfield.currentIndex() == -1:
+    #         outputfield.setDisabled(True)
+    #         self.dlg.ui.radio_output_attribute.setDisabled(True)
+    #         outputfield.addItem("geometry field not found")
+    #     else:
+    #         outputfield.setDisabled(False)
+    #         self.dlg.ui.radio_output_attribute.setDisabled(False)
+    #     self.dlg.ui.radio_output_newlayer.setChecked(True)
 
     def log_clear(self):
         self.dlg.ui.simplipy_log.clear()
@@ -306,16 +307,18 @@ class simplipy:
     def get_output_mode(self):
         if self.dlg.ui.radio_output_newlayer.isChecked():
             return OUTPUT_NEWLAYER
-        if self.dlg.ui.radio_output_attribute.isChecked():
-            return OUTPUT_ATTRIBUTE
+        if self.dlg.ui.radio_output_newlayerhidden.isChecked():
+            return OUTPUT_NEWLAYER_HIDDEN
+        #if self.dlg.ui.radio_output_attribute.isChecked():
+        #    return OUTPUT_ATTRIBUTE
         raise Exception("Cant find output mode")
 
-    def get_output_field_idx(self):
-        layer = self.get_input_layer()
-        for (i, field) in enumerate(layer.dataProvider().fields()):
-            if field.typeName() == "geometry" and field.name() == self.dlg.ui.output_field_attribute.currentText():
-                return i
-        raise Exception("Cant find output field idx!?")
+    #def get_output_field_idx(self):
+    #    layer = self.get_input_layer()
+    #    for (i, field) in enumerate(layer.dataProvider().fields()):
+    #        if field.typeName() == "geometry" and field.name() == self.dlg.ui.output_field_attribute.currentText():
+    #            return i
+    #    raise Exception("Cant find output field idx!?")
 
 
     def get_algorithm_selected(self):
@@ -429,12 +432,12 @@ class simplipy:
             geometry_type = geometryTypeMap[layer.geometryType()]
 
             gid_column = get_gid_column_name(layer)
-            if output_mode == OUTPUT_NEWLAYER:
+            if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
                 new_layer = self.createLayer(geometry_type, layer.crs(), gid_column_name=gid_column)
                 new_layer.startEditing()
-            elif output_mode == OUTPUT_ATTRIBUTE:
-                self.log("START EDIT")
-                layer.startEditing()
+            #elif output_mode == OUTPUT_ATTRIBUTE:
+            #    self.log("START EDIT")
+            #    layer.startEditing()
 
             feature_map = {}
             for feature in self.get_features(layer):
@@ -447,14 +450,14 @@ class simplipy:
             def setprogress(x):
                 self.dlg.ui.progressBar.setValue(x)
             def save_feature(simp_feature):
-                if output_mode == OUTPUT_NEWLAYER:
+                if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
                     new_layer.dataProvider().addFeatures([simp_feature])
-                if output_mode == OUTPUT_ATTRIBUTE:
-                    idx = self.get_output_field_idx()
-                    gid = simp_feature.attributes()[0]
-                    feature = feature_map[gid] # feature from original source(layer)
-                    self.log("save on attribute= %s:%s" % (idx, gid))
-                    feature.setAttribute(idx, simp_feature.geometry())
+                #if output_mode == OUTPUT_ATTRIBUTE:
+                #    idx = self.get_output_field_idx()
+                #    gid = simp_feature.attributes()[0]
+                #    feature = feature_map[gid] # feature from original source(layer)
+                #    self.log("save on attribute= %s:%s" % (idx, gid))
+                #    feature.setAttribute(idx, simp_feature.geometry())
 
             def jobfinished(value):
                 self.log("Thread job finished!")
@@ -462,20 +465,23 @@ class simplipy:
                 self.dlg.ui.start_button.setText("Start")
                 self.set_ui_enabled(True)
 
-                if output_mode == OUTPUT_NEWLAYER:
+                if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
                     new_layer.commitChanges()
                     # add layer to layer registry
                     uri = os.path.join(os.path.dirname(__file__), "qgis_style_test.qml")
                     if os.path.exists(uri):
                         new_layer.loadNamedStyle(uri)
                     self.layerRegistry.addMapLayer(new_layer)
-                    self.iface.legendInterface().setLayerVisible(new_layer, True)
-                elif output_mode == OUTPUT_ATTRIBUTE:
-                    self.log("COMMIT")
-                    layer.commitChanges()
+                    if output_mode == OUTPUT_NEWLAYER:
+                        self.iface.legendInterface().setLayerVisible(new_layer, True)
+                    else:
+                        self.iface.legendInterface().setLayerVisible(new_layer, False)
+                # elif output_mode == OUTPUT_ATTRIBUTE:
+                #     self.log("COMMIT")
+                #     layer.commitChanges()
 
                 self.iface.mapCanvas().refresh()
-                if output_mode == OUTPUT_NEWLAYER:
+                if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
                     new_layer.loadNamedStyle(uri)
                 self.sthread = None
             def error(e):
@@ -516,7 +522,7 @@ class simplipy:
         self.log("Simplipy Log:")
 
         self.refresh_input_layer_list()
-        self.refresh_output_field_list()
+        #self.refresh_output_field_list()
         self.show_alg_parameters(self.get_algorithm_selected())
 
         # Run the dialog event loop
