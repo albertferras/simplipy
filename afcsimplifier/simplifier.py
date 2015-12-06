@@ -283,23 +283,29 @@ class ChainDB(object):
         # 1.a - linearrings must have 4 points atleast (3 distinct)
         #     - linestring must have 2 distinct points atleast
         if self.constraint_prevent_shape_removal:
+            if push_progress:
+                push_progress("Preventing shape removal...",
+                              "Preventing shape removal... (Please wait)")
             for key in keys_found:
                 geom_idx = self.keys[key]
                 self.prevent_shape_removal(geom_idx)
 
         # 2 - repair intersections and expand/contract constraint
         modified = True
+        iteration = 0
         while modified is True:
+            iteration += 1
             modified = False
             if self.constraint_expandcontract is not None:
                 modified |= self.apply_expandcontract(self.constraint_expandcontract, keys_found)
             if self.constraint_repair_intersections:
                 if push_progress:
-                    push_progress('Repairing intersections...')
+                    push_progress('Repairing intersections... Iteration %s' % iteration,
+                                  "Repairing intersections... (Please wait)")
                 modified |= self.repair_intersections(**kwargs)
 
         if push_progress:
-            push_progress('Done!')
+            push_progress('Done!', "Success!")
 
     def chain_shares_edges(self, chain_idx):
         chain = self.chains[chain_idx]

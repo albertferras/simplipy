@@ -491,8 +491,15 @@ class simplipy:
             num_features = len(feature_map)
             features = feature_map.values()
 
+            self.dlg.ui.progressBar.setFormat("%p")
+
             def setprogress(x):
-                self.dlg.ui.progressBar.setValue(x)
+                if isinstance(x, str):
+                    self.dlg.ui.progressBar.setFormat(x)
+                else:
+                    self.dlg.ui.progressBar.setFormat("%p%")
+                    self.dlg.ui.progressBar.setValue(x)
+
             def save_feature(simp_feature):
                 if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
                     new_layer.dataProvider().addFeatures([simp_feature])
@@ -669,8 +676,11 @@ class SimplifyThread(WorkerThread):
             last_p = 0
             self.emit(SIGNAL("progress( PyQt_PyObject )"), 0)
             
-            def push_progress(msg):
+            def push_progress(msg, bar_msg=None):
                 self.logger("Progress = %s" % str(msg))
+                if bar_msg:
+                    self.emit(SIGNAL("progress( PyQt_PyObject )"), bar_msg)
+
 
             # Fill chain db
             self.logger("fill chain db")
