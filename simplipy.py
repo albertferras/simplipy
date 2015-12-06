@@ -187,17 +187,37 @@ class simplipy:
         self.refresh_input_layer_list()
 
     def refresh_constraint_options_gui(self):
-        # sets to enabled/disabled the constraint options /depending on what constraints are selected)
-        self.dlg.ui.select_cnstr_expandcontract.setDisabled(not self.dlg.ui.cnstr_expandcontract.isChecked())
-        self.dlg.ui.label_precision_repair.setDisabled(not self.dlg.ui.cnstr_repairintersections.isChecked())
-        self.dlg.ui.doubleSpinBox_precision_repair.setDisabled(not self.dlg.ui.cnstr_repairintersections.isChecked())
+        layer = self.get_input_layer()
+        layer_geometry_type = geometryTypeMap[layer.geometryType()] if layer else None
 
-        self.dlg.ui.label_min_points.setDisabled(not self.dlg.ui.cnstr_preventshaperemoval.isChecked())
-        self.dlg.ui.spinBox_min_points.setDisabled(not self.dlg.ui.cnstr_preventshaperemoval.isChecked())
-        self.dlg.ui.label_snap_precision.setDisabled(not self.dlg.ui.cnstr_usetopology.isChecked())
-        self.dlg.ui.doubleSpinBox_snap_precision.setDisabled(not self.dlg.ui.cnstr_usetopology.isChecked())
-        self.dlg.ui.cnstr_sharededges.setDisabled(not self.dlg.ui.cnstr_usetopology.isChecked())
-        self.dlg.ui.cnstr_nonsharededges.setDisabled(not self.dlg.ui.cnstr_usetopology.isChecked())
+        line_layer = layer_geometry_type == "LineString"
+        poly_layer = layer_geometry_type == "Polygon"
+
+        # sets to enabled/disabled the constraint options /depending on what constraints are selected)
+        ui = self.dlg.ui
+
+        ui.cnstr_expandcontract.setEnabled(poly_layer)
+        ui.select_cnstr_expandcontract.setEnabled(ui.cnstr_expandcontract.isChecked() and poly_layer)
+
+        ui.label_precision_repair.setEnabled(ui.cnstr_repairintersections.isChecked())
+        ui.doubleSpinBox_precision_repair.setEnabled(ui.cnstr_repairintersections.isChecked())
+
+        ui.label_min_points_polygon.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and poly_layer)
+        ui.spinBox_min_points_polygon.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and poly_layer)
+
+        ui.label_min_points_line.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and line_layer)
+        ui.spinBox_min_points_line.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and line_layer)
+
+        ui.label_snap_precision.setEnabled(ui.cnstr_usetopology.isChecked())
+        ui.doubleSpinBox_snap_precision.setEnabled(ui.cnstr_usetopology.isChecked())
+        ui.cnstr_sharededges.setEnabled(ui.cnstr_usetopology.isChecked())
+        ui.cnstr_nonsharededges.setEnabled(ui.cnstr_usetopology.isChecked())
+
+        # algorithm options
+        ui.label_dougle_partition_by.setEnabled(poly_layer)
+        ui.option_douglas_diameterpoints.setEnabled(poly_layer)
+        ui.option_douglas_firstandfurthest.setEnabled(poly_layer)
+        ui.option_douglas_firstandlast.setEnabled(poly_layer)
 
     def unload(self):
         # Remove the plugin menu item and icon
@@ -246,7 +266,6 @@ class simplipy:
                 else:
                     self.dlg.ui.features_all_radio.setChecked(True)
 
-
     def get_total_features(self, layer):
         try:
             if layer is None:
@@ -285,6 +304,7 @@ class simplipy:
 
     def inputlayer_changed(self):
         self.refresh_feature_count()
+        self.refresh_constraint_options_gui()
         #self.refresh_output_field_list()
 
     # def refresh_output_field_list(self):
@@ -342,31 +362,40 @@ class simplipy:
                 return alg_id
         raise ExceptNoTraceback("No algorithm selected")
 
-
     def get_constraints(self):
-        constraints = {}
+        layer = self.get_input_layer()
+        layer_geometry_type = geometryTypeMap[layer.geometryType()] if layer else None
 
+        is_activated = lambda ui: ui.isChecked() and ui.isEnabled()
+
+        constraints = {}
         constraints['expandcontract'] = None
-        if self.dlg.ui.cnstr_expandcontract.isChecked():
+        if is_activated(self.dlg.ui.cnstr_expandcontract):
             constraints['expandcontract'] = self.dlg.ui.select_cnstr_expandcontract.currentText()
 
-        constraints['simplify_shared_edges'] = self.dlg.ui.cnstr_sharededges.isChecked()
-        constraints['simplify_non_shared_edges'] = self.dlg.ui.cnstr_nonsharededges.isChecked()
-        constraints['repair_intersections'] = self.dlg.ui.cnstr_repairintersections.isChecked()
+        constraints['simplify_shared_edges'] = is_activated(self.dlg.ui.cnstr_sharededges)
+        constraints['simplify_non_shared_edges'] = is_activated(self.dlg.ui.cnstr_nonsharededges)
+        constraints['repair_intersections'] = is_activated(self.dlg.ui.cnstr_repairintersections)
         constraints['repair_intersections_precision'] = float(self.dlg.ui.doubleSpinBox_precision_repair.value())
-        constraints['prevent_shape_removal'] = self.dlg.ui.cnstr_preventshaperemoval.isChecked()
-        constraints['prevent_shape_removal_min_points'] = int(self.dlg.ui.spinBox_min_points.value())
 
-        constraints['use_topology'] = self.dlg.ui.cnstr_usetopology.isChecked()
+        constraints['prevent_shape_removal'] = is_activated(self.dlg.ui.cnstr_preventshaperemoval)
+        min_points = None
+        if layer_geometry_type == 'Point':
+            min_points = 1
+        elif layer_geometry_type == 'LineString':
+            min_points = int(self.dlg.ui.spinBox_min_points_line.value())
+        elif layer_geometry_type == 'Polygon':
+            min_points = int(self.dlg.ui.spinBox_min_points_polygon.value())
+        constraints['prevent_shape_removal_min_points'] = min_points
+
+        constraints['use_topology'] = is_activated(self.dlg.ui.cnstr_usetopology)
         constraints['use_topology_snap_precision'] = float(self.dlg.ui.doubleSpinBox_snap_precision.value())
 
         return constraints
 
-
     def get_algorithm_parameters(self, alg_id):
         params = {}
         for parameter_name, parameter in simplify_algorithms[alg_id]['parameters'].items():
-            #self.log(str(type(parameter['qobj'])))
             qobj = parameter['qobj']
             if isinstance(qobj, QDoubleSpinBox):
                 value = qobj.value()

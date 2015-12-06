@@ -376,7 +376,7 @@
             </layout>
            </item>
            <item>
-            <widget class="QLabel" name="label_3">
+            <widget class="QLabel" name="label_dougle_partition_by">
              <property name="text">
               <string>Partition by (ring to chain):</string>
              </property>
@@ -617,7 +617,7 @@
          </widget>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_min_points">
+         <layout class="QHBoxLayout" name="horizontalLayout_min_points_polygon">
           <item>
            <spacer name="horizontalSpacer_2">
             <property name="orientation">
@@ -632,16 +632,47 @@
            </spacer>
           </item>
           <item>
-           <widget class="QLabel" name="label_min_points">
+           <widget class="QLabel" name="label_min_points_polygon">
             <property name="text">
-             <string>Min points (polygons)</string>
+             <string>Min points (polygon)</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QSpinBox" name="spinBox_min_points">
+           <widget class="QSpinBox" name="spinBox_min_points_polygon">
             <property name="minimum">
              <number>3</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_min_points_line">
+          <item>
+           <spacer name="horizontalSpacer_2line">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QLabel" name="label_min_points_line">
+            <property name="text">
+             <string>Min points (line)</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spinBox_min_points_line">
+            <property name="minimum">
+             <number>2</number>
             </property>
            </widget>
           </item>
