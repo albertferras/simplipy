@@ -872,7 +872,7 @@ class ChainDB(object):
 
     def get_rings_by_geom(self, geom_idx):
         geom = self.geometries[geom_idx]
-        if geom[self.GEOM_TYPE] == "LinearRing":
+        if geom[self.GEOM_TYPE] in ["LinearRing", "LineString"]:
             yield geom_idx
         else:
             for children_geom_idx in geom[self.GEOM_CHILDREN]:
