@@ -37,6 +37,7 @@ import binascii
 import os.path
 import traceback
 import sys
+import json
 
 starting_points_qobj = { # TODO PARSE AND USE IN CHAINDB
     ChainDB.STARTING_POINT_FIRSTANDLAST: 'option_douglas_firstandlast',
@@ -72,6 +73,11 @@ class ExceptNoTraceback(Exception):
     def __init__(self, message):
         # Call the base class constructor with the parameters it needs
         Exception.__init__(self, message)
+
+
+class StopSimplificationException(Exception):
+    pass
+
 
 def exception_format(e):
     msg = str(e)
@@ -405,6 +411,7 @@ class simplipy:
 
     sthread = None
     def start_simplify(self):
+        self.error = False
         if self.sthread is not None:
             # if thread running, stop it (or try to stop it)
             self.sthread.stop()
@@ -496,12 +503,20 @@ class simplipy:
                 if style_uri:
                     new_layer.loadNamedStyle(uri)
                 self.sthread = None
+
             def error(e):
-                self.log("Error simplifying:")
-                self.log(e)
+                msg = json.loads(e)
+                if str(type(StopSimplificationException())) == msg['error']:
+                    # Note: I don't like the way I'm checking the error class
+                    self.log("Simplification cancelled by user")
+                else:
+                    self.log("Error simplifying:")
+                    self.log(msg['trace'])
+                self.error = True
 
             self.set_ui_enabled(False)
             self.dlg.ui.start_button.setText("Stop")
+            self.dlg.ui.start_button.setDisabled(False)
             self.sthread = SimplifyThread(self.iface.mainWindow(), layer, simplifier, params, constraints, features, num_features, logger=self.log)
             QObject.connect(self.sthread, SIGNAL("jobFinished( PyQt_PyObject )"), jobfinished)
             QObject.connect(self.sthread, SIGNAL("progress( PyQt_PyObject )"), setprogress)
@@ -605,7 +620,7 @@ class SimplifyThread(WorkerThread):
         tlast = time.time()
         for item in items:
             if self.running is False:
-                raise Exception("Cancel requested")
+                raise StopSimplificationException("Cancel requested")
             yield item
             p_int = int((i*100.0) / total)
             i += 1
@@ -661,5 +676,8 @@ class SimplifyThread(WorkerThread):
                 self.emit(SIGNAL("featureResult( PyQt_PyObject )"), f)
 
         except Exception, e:
-            self.emit(SIGNAL("error( PyQt_PyObject )"), exception_format(e))
+            message = {'trace': exception_format(e),
+                       'error': str(type(e))}
+            message = json.dumps(message)
+            self.emit(SIGNAL("error( PyQt_PyObject )"), message)
         return True
