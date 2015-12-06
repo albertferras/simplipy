@@ -2,8 +2,8 @@
 
 # Form implementation generated from reading ui file 'ui_simplipy.ui'
 #
-# Created: Sun Jun  1 18:18:24 2014
-#      by: PyQt4 UI code generator 4.9.1
+# Created: Sun Dec  6 14:36:05 2015
+#      by: PyQt4 UI code generator 4.10.4
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -12,7 +12,16 @@ from PyQt4 import QtCore, QtGui
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
 except AttributeError:
-    _fromUtf8 = lambda s: s
+    def _fromUtf8(s):
+        return s
+
+try:
+    _encoding = QtGui.QApplication.UnicodeUTF8
+    def _translate(context, text, disambig):
+        return QtGui.QApplication.translate(context, text, disambig, _encoding)
+except AttributeError:
+    def _translate(context, text, disambig):
+        return QtGui.QApplication.translate(context, text, disambig)
 
 class Ui_simplipy(object):
     def setupUi(self, simplipy):
@@ -28,7 +37,6 @@ class Ui_simplipy(object):
         self.group_Source.setObjectName(_fromUtf8("group_Source"))
         self.horizontalLayout_5 = QtGui.QHBoxLayout(self.group_Source)
         self.horizontalLayout_5.setSpacing(0)
-        self.horizontalLayout_5.setMargin(0)
         self.horizontalLayout_5.setMargin(0)
         self.horizontalLayout_5.setObjectName(_fromUtf8("horizontalLayout_5"))
         self.groupInput = QtGui.QGroupBox(self.group_Source)
@@ -336,50 +344,50 @@ class Ui_simplipy(object):
         QtCore.QMetaObject.connectSlotsByName(simplipy)
 
     def retranslateUi(self, simplipy):
-        simplipy.setWindowTitle(QtGui.QApplication.translate("simplipy", "simplipy", None, QtGui.QApplication.UnicodeUTF8))
-        self.groupInput.setTitle(QtGui.QApplication.translate("simplipy", "Input", None, QtGui.QApplication.UnicodeUTF8))
-        self.label_4.setText(QtGui.QApplication.translate("simplipy", "Layer:", None, QtGui.QApplication.UnicodeUTF8))
-        self.groupBox.setTitle(QtGui.QApplication.translate("simplipy", "Features:", None, QtGui.QApplication.UnicodeUTF8))
-        self.features_all_radio.setText(QtGui.QApplication.translate("simplipy", "All", None, QtGui.QApplication.UnicodeUTF8))
-        self.features_selected_radio.setText(QtGui.QApplication.translate("simplipy", "Selected features", None, QtGui.QApplication.UnicodeUTF8))
-        self.label_2.setText(QtGui.QApplication.translate("simplipy", "Total features:", None, QtGui.QApplication.UnicodeUTF8))
-        self.label_total_features.setText(QtGui.QApplication.translate("simplipy", "0", None, QtGui.QApplication.UnicodeUTF8))
-        self.groupOutput.setTitle(QtGui.QApplication.translate("simplipy", "Output", None, QtGui.QApplication.UnicodeUTF8))
-        self.radio_output_newlayer.setText(QtGui.QApplication.translate("simplipy", "Add result to canvas (visible layer)", None, QtGui.QApplication.UnicodeUTF8))
-        self.radio_output_newlayerhidden.setText(QtGui.QApplication.translate("simplipy", "Add result to canvas (hidden layer)", None, QtGui.QApplication.UnicodeUTF8))
-        self.group_Algorithm.setTitle(QtGui.QApplication.translate("simplipy", "Algorithms", None, QtGui.QApplication.UnicodeUTF8))
-        self.radio_alg_douglas.setText(QtGui.QApplication.translate("simplipy", "Douglas-Peucker", None, QtGui.QApplication.UnicodeUTF8))
-        self.radio_alg_visvalingam.setText(QtGui.QApplication.translate("simplipy", "Visvalingam", None, QtGui.QApplication.UnicodeUTF8))
-        self.group_Options.setTitle(QtGui.QApplication.translate("simplipy", "Parameters", None, QtGui.QApplication.UnicodeUTF8))
-        self.label.setText(QtGui.QApplication.translate("simplipy", "Tolerance:", None, QtGui.QApplication.UnicodeUTF8))
-        self.label_3.setText(QtGui.QApplication.translate("simplipy", "Partition by (ring to chain):", None, QtGui.QApplication.UnicodeUTF8))
-        self.option_douglas_firstandlast.setText(QtGui.QApplication.translate("simplipy", "First and last", None, QtGui.QApplication.UnicodeUTF8))
-        self.option_douglas_firstandfurthest.setToolTip(QtGui.QApplication.translate("simplipy", "<html><head/><body><p>The first point is the first point in the polygon. The end point is the point with maximum distance to the first point.</p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
-        self.option_douglas_firstandfurthest.setText(QtGui.QApplication.translate("simplipy", "First and furthest", None, QtGui.QApplication.UnicodeUTF8))
-        self.option_douglas_diameterpoints.setToolTip(QtGui.QApplication.translate("simplipy", "<html><head/><body><p>The <a href=\"http://cgm.cs.mcgill.ca/~orm/diam.html\"><span style=\" text-decoration: underline; color:#0000ff;\">diameter of a polygon</span></a> is defined as the maximum distance between any two points of the polygon. These two points are the starting points.</p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
-        self.option_douglas_diameterpoints.setText(QtGui.QApplication.translate("simplipy", "Diameter points", None, QtGui.QApplication.UnicodeUTF8))
-        self.label_5.setText(QtGui.QApplication.translate("simplipy", "Min Area:", None, QtGui.QApplication.UnicodeUTF8))
-        self.group_Constraints.setTitle(QtGui.QApplication.translate("simplipy", "Constraints", None, QtGui.QApplication.UnicodeUTF8))
-        self.cnstr_expandcontract.setToolTip(QtGui.QApplication.translate("simplipy", "<html><head/><body><p>Expand: The original geometry is a sub-region of the simplified geometry.</p><p>Contract: The simplified geometry is a sub-region of the original geometry.</p><p><br/></p><p>Works by rolling back removed points which created an expansion or contraction of the original geometry.</p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
-        self.cnstr_expandcontract.setText(QtGui.QApplication.translate("simplipy", "Expand/Contract", None, QtGui.QApplication.UnicodeUTF8))
-        self.select_cnstr_expandcontract.setItemText(0, QtGui.QApplication.translate("simplipy", "Contract", None, QtGui.QApplication.UnicodeUTF8))
-        self.select_cnstr_expandcontract.setItemText(1, QtGui.QApplication.translate("simplipy", "Expand", None, QtGui.QApplication.UnicodeUTF8))
-        self.cnstr_repairintersections.setToolTip(QtGui.QApplication.translate("simplipy", "<html><head/><body><p>Fixes the self-intersections and intersections with other polygons that are created after polygons simplification.</p><p>Works by restoring some of the points removed in the simplification of the geometry.</p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
-        self.cnstr_repairintersections.setText(QtGui.QApplication.translate("simplipy", "Repair intersections", None, QtGui.QApplication.UnicodeUTF8))
-        self.label_precision_repair.setText(QtGui.QApplication.translate("simplipy", "Precision", None, QtGui.QApplication.UnicodeUTF8))
-        self.cnstr_preventshaperemoval.setToolTip(QtGui.QApplication.translate("simplipy", "<html><head/><body><p>Prevents small polygons from disappearing after simplifications. This can happen when the simplification tolerance is very high compared with the size of the shape. For example, in a world map: Prevent small islands to be deleted.</p><p>The number of points from every shape prevented to be removed will be the result of executing the Visvalingam algorithm until there are 3 points left.</p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
-        self.cnstr_preventshaperemoval.setText(QtGui.QApplication.translate("simplipy", "Prevent shape removal", None, QtGui.QApplication.UnicodeUTF8))
-        self.label_min_points.setText(QtGui.QApplication.translate("simplipy", "Min points (polygons)", None, QtGui.QApplication.UnicodeUTF8))
-        self.cnstr_usetopology.setToolTip(QtGui.QApplication.translate("simplipy", "<html><head/><body><p>Recommended for maps.</p><p>Avoids the creation of gaps and overlapping areas between two shapes that share edges, such as the frontier of two countries.</p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
-        self.cnstr_usetopology.setText(QtGui.QApplication.translate("simplipy", "Use topology", None, QtGui.QApplication.UnicodeUTF8))
-        self.label_snap_precision.setToolTip(QtGui.QApplication.translate("simplipy", "<html><head/><body><p><br/></p><p>Fixes topology errors by snapping together points that are almost identical. The \'junction precision\' let\'s you adjust the threshold to detect identical points.</p><p><br/></p><p>Increase this value when the resulting simplification doesn\'t simplify many of the edges between two polygons. This will happen if the original geometry has gaps between geometries. If something overlaps in the original geometry, this option will not help you fix it.</p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
-        self.label_snap_precision.setText(QtGui.QApplication.translate("simplipy", "Snap precision:", None, QtGui.QApplication.UnicodeUTF8))
-        self.cnstr_sharededges.setText(QtGui.QApplication.translate("simplipy", "Simplify shared edges", None, QtGui.QApplication.UnicodeUTF8))
-        self.cnstr_nonsharededges.setText(QtGui.QApplication.translate("simplipy", "Simplify non-shared edges", None, QtGui.QApplication.UnicodeUTF8))
-        self.simplipy_log.setHtml(QtGui.QApplication.translate("simplipy", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
+        simplipy.setWindowTitle(_translate("simplipy", "simplipy", None))
+        self.groupInput.setTitle(_translate("simplipy", "Input", None))
+        self.label_4.setText(_translate("simplipy", "Layer:", None))
+        self.groupBox.setTitle(_translate("simplipy", "Features:", None))
+        self.features_all_radio.setText(_translate("simplipy", "All", None))
+        self.features_selected_radio.setText(_translate("simplipy", "Selected features", None))
+        self.label_2.setText(_translate("simplipy", "Total features:", None))
+        self.label_total_features.setText(_translate("simplipy", "0", None))
+        self.groupOutput.setTitle(_translate("simplipy", "Output", None))
+        self.radio_output_newlayer.setText(_translate("simplipy", "Add result to canvas (visible layer)", None))
+        self.radio_output_newlayerhidden.setText(_translate("simplipy", "Add result to canvas (hidden layer)", None))
+        self.group_Algorithm.setTitle(_translate("simplipy", "Algorithms", None))
+        self.radio_alg_douglas.setText(_translate("simplipy", "Douglas-Peucker", None))
+        self.radio_alg_visvalingam.setText(_translate("simplipy", "Visvalingam", None))
+        self.group_Options.setTitle(_translate("simplipy", "Parameters", None))
+        self.label.setText(_translate("simplipy", "Tolerance:", None))
+        self.label_3.setText(_translate("simplipy", "Partition by (ring to chain):", None))
+        self.option_douglas_firstandlast.setText(_translate("simplipy", "First and last", None))
+        self.option_douglas_firstandfurthest.setToolTip(_translate("simplipy", "<html><head/><body><p>The first point is the first point in the polygon. The end point is the point with maximum distance to the first point.</p></body></html>", None))
+        self.option_douglas_firstandfurthest.setText(_translate("simplipy", "First and furthest", None))
+        self.option_douglas_diameterpoints.setToolTip(_translate("simplipy", "<html><head/><body><p>The <a href=\"http://cgm.cs.mcgill.ca/~orm/diam.html\"><span style=\" text-decoration: underline; color:#0000ff;\">diameter of a polygon</span></a> is defined as the maximum distance between any two points of the polygon. These two points are the starting points.</p></body></html>", None))
+        self.option_douglas_diameterpoints.setText(_translate("simplipy", "Diameter points", None))
+        self.label_5.setText(_translate("simplipy", "Min Area:", None))
+        self.group_Constraints.setTitle(_translate("simplipy", "Constraints", None))
+        self.cnstr_expandcontract.setToolTip(_translate("simplipy", "<html><head/><body><p>Expand: The original geometry is a sub-region of the simplified geometry.</p><p>Contract: The simplified geometry is a sub-region of the original geometry.</p><p><br/></p><p>Works by rolling back removed points which created an expansion or contraction of the original geometry.</p></body></html>", None))
+        self.cnstr_expandcontract.setText(_translate("simplipy", "Expand/Contract", None))
+        self.select_cnstr_expandcontract.setItemText(0, _translate("simplipy", "Contract", None))
+        self.select_cnstr_expandcontract.setItemText(1, _translate("simplipy", "Expand", None))
+        self.cnstr_repairintersections.setToolTip(_translate("simplipy", "<html><head/><body><p>Fixes the self-intersections and intersections with other polygons that are created after polygons simplification.</p><p>Works by restoring some of the points removed in the simplification of the geometry.</p></body></html>", None))
+        self.cnstr_repairintersections.setText(_translate("simplipy", "Repair intersections", None))
+        self.label_precision_repair.setText(_translate("simplipy", "Precision", None))
+        self.cnstr_preventshaperemoval.setToolTip(_translate("simplipy", "<html><head/><body><p>Prevents small polygons from disappearing after simplifications. This can happen when the simplification tolerance is very high compared with the size of the shape. For example, in a world map: Prevent small islands to be deleted.</p><p>The number of points from every shape prevented to be removed will be the result of executing the Visvalingam algorithm until there are 3 points left.</p></body></html>", None))
+        self.cnstr_preventshaperemoval.setText(_translate("simplipy", "Prevent shape removal", None))
+        self.label_min_points.setText(_translate("simplipy", "Min points (polygons)", None))
+        self.cnstr_usetopology.setToolTip(_translate("simplipy", "<html><head/><body><p>Recommended for maps.</p><p>Avoids the creation of gaps and overlapping areas between two shapes that share edges, such as the frontier of two countries.</p></body></html>", None))
+        self.cnstr_usetopology.setText(_translate("simplipy", "Use topology", None))
+        self.label_snap_precision.setToolTip(_translate("simplipy", "<html><head/><body><p><br/></p><p>Fixes topology errors by snapping together points that are almost identical. The \'junction precision\' let\'s you adjust the threshold to detect identical points.</p><p><br/></p><p>Increase this value when the resulting simplification doesn\'t simplify many of the edges between two polygons. This will happen if the original geometry has gaps between geometries. If something overlaps in the original geometry, this option will not help you fix it.</p></body></html>", None))
+        self.label_snap_precision.setText(_translate("simplipy", "Snap precision:", None))
+        self.cnstr_sharededges.setText(_translate("simplipy", "Simplify shared edges", None))
+        self.cnstr_nonsharededges.setText(_translate("simplipy", "Simplify non-shared edges", None))
+        self.simplipy_log.setHtml(_translate("simplipy", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
 "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
 "p, li { white-space: pre-wrap; }\n"
 "</style></head><body style=\" font-family:\'Ubuntu\'; font-size:10pt; font-weight:400; font-style:normal;\">\n"
-"<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:\'Cantarell\';\"><br /></p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
-        self.start_button.setText(QtGui.QApplication.translate("simplipy", "Start", None, QtGui.QApplication.UnicodeUTF8))
+"<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:\'Cantarell\';\"><br /></p></body></html>", None))
+        self.start_button.setText(_translate("simplipy", "Start", None))
 

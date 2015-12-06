@@ -785,7 +785,7 @@ class ChainDB(object):
 
     def _add_geometry(self, key, geometry, parent=None, **kwargs):
         if geometry is not None:
-            item = [geometry.type, parent, None] # 0=type, 1=parent(index), 2=children(index)
+            item = [geometry.type, parent, None]  # 0=type, 1=parent(index), 2=children(index)
         else:
             item = [None, parent, None]
 
@@ -807,7 +807,14 @@ class ChainDB(object):
         elif geometry.type == 'LinearRing':
             children = []
             points = self.linearring_to_point_list(geometry, is_exterior=kwargs['is_exterior'])
-            chain_data = ([i], to_points_data(points)) # (parents (this ring), direction, list of points)
+            chain_data = ([i], to_points_data(points))  # (parents (this ring), list of points)
+            self.chains.append(chain_data)
+            c = len(self.chains)-1
+            children.append(c)
+        elif geometry.type == "LineString":
+            children = []
+            points = list(geometry.coords)
+            chain_data = ([i], to_points_data(points))
             self.chains.append(chain_data)
             c = len(self.chains)-1
             children.append(c)
@@ -821,7 +828,6 @@ class ChainDB(object):
         if geometry.is_ccw == is_exterior:
             point_list = point_list[::-1]
         return point_list
-
 
     def split_chain(self, point_list):
         # each point list includes the first and last point of the next point list.
@@ -848,7 +854,9 @@ class ChainDB(object):
         else:
             yield point_list
 
-    def pointsdata_list_to_linearring(self, pointsdata_list):
+    def _merge_pointsdata_list(self, pointsdata_list):
+        """ Merge a list of list of points (Make sure last and first point of every chain wont appear twice)
+        """
         if len(pointsdata_list) == 0:
             return None
         result = copy.copy(pointsdata_list[0])
@@ -876,11 +884,13 @@ class ChainDB(object):
         geom = self.geometries[geom_idx]
         if geom[self.GEOM_TYPE] is None:
             return []
-        elif geom[self.GEOM_TYPE] == "LinearRing":
+        elif geom[self.GEOM_TYPE] in ["LinearRing", 'LineString']:
             chain_ids = geom[self.GEOM_CHILDREN]
             return chain_ids
-        else:
+        elif geom[self.GEOM_TYPE] in ['Polygon', 'MultiPolygon']:
             return reduce(lambda a,b: a+b, map(self.get_chains_by_geom, geom[self.GEOM_CHILDREN]))
+        else:
+            raise NotImplemented("get_chains_by_geom not implemented for {}".format(geom[self.GEOM_TYPE]))
 
     def get_chains_by_geom2(self, geom_idx):
         # like get_chains_by_geom, but also returns if chain_id is reversed
@@ -927,53 +937,87 @@ class ChainDB(object):
             geom = ogr.Geometry(ogr.wkbLinearRing)
 
             # get all chains in the correct order
-            points_data_list = []
-            for c in children:
-                chain = self.chains[c]
-                points = chain[self.CHAIN_POINTS]
+            points_data_list = self._build_retrieve_chain_points(geom_idx)
 
-                # direction?
-                if chain[self.CHAIN_PARENTS][0] == geom_idx:
-                    direction = DIRECTION_NORMAL
-                elif chain[self.CHAIN_PARENTS][1] == geom_idx:
-                    direction = DIRECTION_REVERSE
-                else:
-                    print "chain error: geomidx=%s, chain=%s" % (geom_idx, c)
-                    raise Exception("LinearRing has a chain in which is not marked as a parent!?")
-
-                if direction == DIRECTION_REVERSE:
-                    points = points[::-1]
-                points_data_list.append(points)
-
-            pointsdata_ring = self.pointsdata_list_to_linearring(points_data_list)      # merge chains
+            # merge chains
+            pointsdata_ring = self._merge_pointsdata_list(points_data_list)
             if pointsdata_ring is None:
                 return None
-
 
             cnt = 0
             p_first = None
             p_last = None
-            for p in pointsdata_ring: # add poitns to the linearring (only those which are not removed)
-                if p[P_REMOVED] is False:
-                    if p_first is None:
-                        p_first = p
-                    cnt += 1
-                    geom.AddPoint_2D(*(p[P_COORD]))
-                    p_last = p
+            for p in self._build_pointsdata_filter_removed(pointsdata_ring):
+                if p_first is None:
+                    p_first = p
+                cnt += 1
+                geom.AddPoint_2D(*(p[P_COORD]))
+                p_last = p
             if p_last != p_first:
                 geom.AddPoint_2D(*(p_first[P_COORD]))
                 cnt += 1
 
-            if cnt <= 3: # LinearRing must contain 3 or more distinct points!
+            if cnt <= 3:  # LinearRing must contain 3 or more distinct points!
                 if self.constraint_prevent_shape_removal:
                     print "Warning: LinearRing(%s) with %s points found!" % (geom_idx, cnt)
                     print filter(lambda p: p[P_REMOVED] is False, pointsdata_ring)
                 return None
-            #if len(pointsdata_ring) > 1000:
-            #    print "%s -> %s" % (len(pointsdata_ring), cnt)
+        elif gtype == "LineString":
+            geom = ogr.Geometry(ogr.wkbLineString)
+
+            points_data_list = self._build_retrieve_chain_points(geom_idx)
+
+            # merge chains
+            pointsdata = self._merge_pointsdata_list(points_data_list)
+            if pointsdata is None:
+                return None
+
+            cnt = 0
+            for p in self._build_pointsdata_filter_removed(pointsdata):
+                geom.AddPoint_2D(*(p[P_COORD]))
+                cnt += 1
+
+            if cnt <= 2:
+                # LineString must contain 2 or more distinct points!
+                if self.constraint_prevent_shape_removal:
+                    print "Warning: LineString(%s) with %s points found!" % (geom_idx, cnt)
+                    print filter(lambda p: p[P_REMOVED] is False, pointsdata)
+                return None
         else:
             raise Exception("Build geometry type %s not implemented" % gtype)
         return geom
+
+    def _build_pointsdata_filter_removed(self, pointsdata):
+        for p in pointsdata: # add points to the linearring (only those which are not removed)
+            if p[P_REMOVED] is False:
+                yield p
+
+    def _build_retrieve_chain_points(self, geom_idx):
+        """ Get all chain points in the correct point order for the geometry
+        :return: list of list points
+        """
+        (gtype, parent, children) = self.geometries[geom_idx]
+        if gtype not in ["LinearRing", "LineString"]:
+            raise ValueError("Can't retrieve chain points for geometry type={}".format(gtype))
+
+        points_data_list = []
+        for c in children:
+            chain = self.chains[c]
+            points = chain[self.CHAIN_POINTS]
+
+            # direction?
+            if chain[self.CHAIN_PARENTS][0] == geom_idx:
+                direction = DIRECTION_NORMAL
+            elif chain[self.CHAIN_PARENTS][1] == geom_idx:
+                direction = DIRECTION_REVERSE
+            else:
+                print "chain error: geomidx=%s, chain=%s" % (geom_idx, c)
+                raise Exception("{} has a chain in which is not marked as a parent!?".format(gtype))
+
+            if direction == DIRECTION_REVERSE:
+                points = points[::-1]
+            points_data_list.append(points)
+        return points_data_list
 
     def to_wkb(self, key):
         # generate wkb for all geometries

@@ -31,6 +31,7 @@ from simplipydialog import simplipyDialog
 from afcsimplifier.simplifier import ChainDB
 from afcsimplifier.douglaspeucker import douglaspeucker
 from afcsimplifier.visvalingam import visvalingam
+import ConfigParser
 import StringIO
 import binascii
 import os.path
@@ -130,6 +131,10 @@ class simplipy:
         self.qgisSettings = QSettings()
         self.layerRegistry = QgsMapLayerRegistry.instance()
         self.input_layer_list = []
+
+        # Read metadata.txt
+        self.metadata = ConfigParser.ConfigParser()
+        self.metadata.read(os.path.join(os.path.dirname(__file__),'metadata.txt'))
 
     def initGui(self):
         # Create action that will start plugin configuration
@@ -468,12 +473,16 @@ class simplipy:
                 self.dlg.ui.start_button.setText("Start")
                 self.set_ui_enabled(True)
 
+                style_uri = None
+
                 if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
                     new_layer.commitChanges()
                     # add layer to layer registry
-                    uri = os.path.join(os.path.dirname(__file__), "qgis_style_test.qml")
-                    if os.path.exists(uri):
-                        new_layer.loadNamedStyle(uri)
+                    if geometry_type == "Polygon":
+                        uri = os.path.join(os.path.dirname(__file__), "qgis_style_test.qml")
+                        if os.path.exists(uri):
+                            style_uri = uri
+                            new_layer.loadNamedStyle(style_uri)
                     self.layerRegistry.addMapLayer(new_layer)
                     if output_mode == OUTPUT_NEWLAYER:
                         self.iface.legendInterface().setLayerVisible(new_layer, True)
@@ -484,7 +493,7 @@ class simplipy:
                 #     layer.commitChanges()
 
                 self.iface.mapCanvas().refresh()
-                if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
+                if style_uri:
                     new_layer.loadNamedStyle(uri)
                 self.sthread = None
             def error(e):
@@ -522,7 +531,8 @@ class simplipy:
         self.dlg.show()
 
         self.dlg.ui.simplipy_log.clear()
-        self.log("Simplipy Log:")
+        version = self.metadata.get("general", "version")
+        self.log("Simplipy {} Log:".format(version))
 
         self.refresh_input_layer_list()
         #self.refresh_output_field_list()
