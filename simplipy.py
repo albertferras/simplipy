@@ -455,8 +455,11 @@ class simplipy:
             params = self.get_algorithm_parameters(alg_id)
             constraints = self.get_constraints()
             self.log("Algorithm: %s" % alg_id)
-            self.log(str(params))
-            self.log(str(constraints))
+            for tag, keyvalues in (('Parameters', params.iteritems()),
+                                   ('Constraints', constraints.iteritems())):
+                self.log("{}:".format(tag))
+                for key, value in keyvalues:
+                    self.log("    {} = {}".format(key, value))
 
             layer = self.get_input_layer()
             if layer is None:
@@ -483,10 +486,24 @@ class simplipy:
             #    self.log("START EDIT")
             #    layer.startEditing()
 
+            stats = {}
+            for category in ('original', 'simplified'):
+                stats[category] = {'features': 0, 'size': 0}
+
+            def count_feature_stats(category, feature):
+                if not feature:
+                    return
+                geom = feature.geometry()
+                if not geom or geom.wkbSize() == 0:
+                    return
+                stats[category]['features'] += 1
+                stats[category]['size'] += geom.wkbSize()
+
             feature_map = {}
             for feature in self.get_features(layer):
                 gid = feature.id()
                 feature_map[gid] = feature
+                count_feature_stats('original', feature)
 
             num_features = len(feature_map)
             features = feature_map.values()
@@ -501,6 +518,7 @@ class simplipy:
                     self.dlg.ui.progressBar.setValue(x)
 
             def save_feature(simp_feature):
+                count_feature_stats('simplified', simp_feature)
                 if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
                     new_layer.dataProvider().addFeatures([simp_feature])
                 #if output_mode == OUTPUT_ATTRIBUTE:
@@ -537,7 +555,32 @@ class simplipy:
 
                 self.iface.mapCanvas().refresh()
                 if style_uri:
-                    new_layer.loadNamedStyle(uri)
+                    new_layer.loadNamedStyle(style_uri)
+
+                # Print stats
+                self.log("Simplification Stats:")
+                for tag in ['features', 'size']:
+                    count_orig = stats['original'][tag]
+                    count_simp = stats['simplified'][tag]
+                    label = tag
+
+                    if tag == 'size':
+                        if count_simp > 10000:
+                            count_orig /= 1000.0
+                            count_simp /= 1000.0
+                            label += " (KB)"
+                        else:
+                            label += " (Bytes)"
+
+                    pcnt = 100.0 * count_simp / float(count_orig) if count_orig else None
+                    if pcnt:
+                        self.log("    Total {} = {} / {} ({:.2f}%)".format(label, count_simp, count_orig, pcnt))
+                    else:
+                        self.log("    Total {} = {} / {}".format(label, count_simp, count_orig))
+
+                    if tag == 'size' and (pcnt and pcnt > 95):
+                        self.log("Hint: Not enough simplification? Try modifying the algorithm parameters")
+
                 self.sthread = None
 
             def error(e):
