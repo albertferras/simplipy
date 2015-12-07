@@ -31,11 +31,13 @@ from simplipydialog import simplipyDialog
 from afcsimplifier.simplifier import ChainDB
 from afcsimplifier.douglaspeucker import douglaspeucker
 from afcsimplifier.visvalingam import visvalingam
+import ConfigParser
 import StringIO
 import binascii
 import os.path
 import traceback
 import sys
+import json
 
 starting_points_qobj = { # TODO PARSE AND USE IN CHAINDB
     ChainDB.STARTING_POINT_FIRSTANDLAST: 'option_douglas_firstandlast',
@@ -71,6 +73,11 @@ class ExceptNoTraceback(Exception):
     def __init__(self, message):
         # Call the base class constructor with the parameters it needs
         Exception.__init__(self, message)
+
+
+class StopSimplificationException(Exception):
+    pass
+
 
 def exception_format(e):
     msg = str(e)
@@ -131,6 +138,10 @@ class simplipy:
         self.layerRegistry = QgsMapLayerRegistry.instance()
         self.input_layer_list = []
 
+        # Read metadata.txt
+        self.metadata = ConfigParser.ConfigParser()
+        self.metadata.read(os.path.join(os.path.dirname(__file__),'metadata.txt'))
+
     def initGui(self):
         # Create action that will start plugin configuration
         self.action = QAction(
@@ -176,17 +187,37 @@ class simplipy:
         self.refresh_input_layer_list()
 
     def refresh_constraint_options_gui(self):
-        # sets to enabled/disabled the constraint options /depending on what constraints are selected)
-        self.dlg.ui.select_cnstr_expandcontract.setDisabled(not self.dlg.ui.cnstr_expandcontract.isChecked())
-        self.dlg.ui.label_precision_repair.setDisabled(not self.dlg.ui.cnstr_repairintersections.isChecked())
-        self.dlg.ui.doubleSpinBox_precision_repair.setDisabled(not self.dlg.ui.cnstr_repairintersections.isChecked())
+        layer = self.get_input_layer()
+        layer_geometry_type = geometryTypeMap[layer.geometryType()] if layer else None
 
-        self.dlg.ui.label_min_points.setDisabled(not self.dlg.ui.cnstr_preventshaperemoval.isChecked())
-        self.dlg.ui.spinBox_min_points.setDisabled(not self.dlg.ui.cnstr_preventshaperemoval.isChecked())
-        self.dlg.ui.label_snap_precision.setDisabled(not self.dlg.ui.cnstr_usetopology.isChecked())
-        self.dlg.ui.doubleSpinBox_snap_precision.setDisabled(not self.dlg.ui.cnstr_usetopology.isChecked())
-        self.dlg.ui.cnstr_sharededges.setDisabled(not self.dlg.ui.cnstr_usetopology.isChecked())
-        self.dlg.ui.cnstr_nonsharededges.setDisabled(not self.dlg.ui.cnstr_usetopology.isChecked())
+        line_layer = layer_geometry_type == "LineString"
+        poly_layer = layer_geometry_type == "Polygon"
+
+        # sets to enabled/disabled the constraint options /depending on what constraints are selected)
+        ui = self.dlg.ui
+
+        ui.cnstr_expandcontract.setEnabled(poly_layer)
+        ui.select_cnstr_expandcontract.setEnabled(ui.cnstr_expandcontract.isChecked() and poly_layer)
+
+        ui.label_precision_repair.setEnabled(ui.cnstr_repairintersections.isChecked())
+        ui.doubleSpinBox_precision_repair.setEnabled(ui.cnstr_repairintersections.isChecked())
+
+        ui.label_min_points_polygon.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and poly_layer)
+        ui.spinBox_min_points_polygon.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and poly_layer)
+
+        ui.label_min_points_line.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and line_layer)
+        ui.spinBox_min_points_line.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and line_layer)
+
+        ui.label_snap_precision.setEnabled(ui.cnstr_usetopology.isChecked())
+        ui.doubleSpinBox_snap_precision.setEnabled(ui.cnstr_usetopology.isChecked())
+        ui.cnstr_sharededges.setEnabled(ui.cnstr_usetopology.isChecked())
+        ui.cnstr_nonsharededges.setEnabled(ui.cnstr_usetopology.isChecked())
+
+        # algorithm options
+        ui.label_dougle_partition_by.setEnabled(poly_layer)
+        ui.option_douglas_diameterpoints.setEnabled(poly_layer)
+        ui.option_douglas_firstandfurthest.setEnabled(poly_layer)
+        ui.option_douglas_firstandlast.setEnabled(poly_layer)
 
     def unload(self):
         # Remove the plugin menu item and icon
@@ -235,7 +266,6 @@ class simplipy:
                 else:
                     self.dlg.ui.features_all_radio.setChecked(True)
 
-
     def get_total_features(self, layer):
         try:
             if layer is None:
@@ -274,6 +304,7 @@ class simplipy:
 
     def inputlayer_changed(self):
         self.refresh_feature_count()
+        self.refresh_constraint_options_gui()
         #self.refresh_output_field_list()
 
     # def refresh_output_field_list(self):
@@ -331,31 +362,40 @@ class simplipy:
                 return alg_id
         raise ExceptNoTraceback("No algorithm selected")
 
-
     def get_constraints(self):
-        constraints = {}
+        layer = self.get_input_layer()
+        layer_geometry_type = geometryTypeMap[layer.geometryType()] if layer else None
 
+        is_activated = lambda ui: ui.isChecked() and ui.isEnabled()
+
+        constraints = {}
         constraints['expandcontract'] = None
-        if self.dlg.ui.cnstr_expandcontract.isChecked():
+        if is_activated(self.dlg.ui.cnstr_expandcontract):
             constraints['expandcontract'] = self.dlg.ui.select_cnstr_expandcontract.currentText()
 
-        constraints['simplify_shared_edges'] = self.dlg.ui.cnstr_sharededges.isChecked()
-        constraints['simplify_non_shared_edges'] = self.dlg.ui.cnstr_nonsharededges.isChecked()
-        constraints['repair_intersections'] = self.dlg.ui.cnstr_repairintersections.isChecked()
+        constraints['simplify_shared_edges'] = is_activated(self.dlg.ui.cnstr_sharededges)
+        constraints['simplify_non_shared_edges'] = is_activated(self.dlg.ui.cnstr_nonsharededges)
+        constraints['repair_intersections'] = is_activated(self.dlg.ui.cnstr_repairintersections)
         constraints['repair_intersections_precision'] = float(self.dlg.ui.doubleSpinBox_precision_repair.value())
-        constraints['prevent_shape_removal'] = self.dlg.ui.cnstr_preventshaperemoval.isChecked()
-        constraints['prevent_shape_removal_min_points'] = int(self.dlg.ui.spinBox_min_points.value())
 
-        constraints['use_topology'] = self.dlg.ui.cnstr_usetopology.isChecked()
+        constraints['prevent_shape_removal'] = is_activated(self.dlg.ui.cnstr_preventshaperemoval)
+        min_points = None
+        if layer_geometry_type == 'Point':
+            min_points = 1
+        elif layer_geometry_type == 'LineString':
+            min_points = int(self.dlg.ui.spinBox_min_points_line.value())
+        elif layer_geometry_type == 'Polygon':
+            min_points = int(self.dlg.ui.spinBox_min_points_polygon.value())
+        constraints['prevent_shape_removal_min_points'] = min_points
+
+        constraints['use_topology'] = is_activated(self.dlg.ui.cnstr_usetopology)
         constraints['use_topology_snap_precision'] = float(self.dlg.ui.doubleSpinBox_snap_precision.value())
 
         return constraints
 
-
     def get_algorithm_parameters(self, alg_id):
         params = {}
         for parameter_name, parameter in simplify_algorithms[alg_id]['parameters'].items():
-            #self.log(str(type(parameter['qobj'])))
             qobj = parameter['qobj']
             if isinstance(qobj, QDoubleSpinBox):
                 value = qobj.value()
@@ -400,6 +440,7 @@ class simplipy:
 
     sthread = None
     def start_simplify(self):
+        self.error = False
         if self.sthread is not None:
             # if thread running, stop it (or try to stop it)
             self.sthread.stop()
@@ -414,8 +455,11 @@ class simplipy:
             params = self.get_algorithm_parameters(alg_id)
             constraints = self.get_constraints()
             self.log("Algorithm: %s" % alg_id)
-            self.log(str(params))
-            self.log(str(constraints))
+            for tag, keyvalues in (('Parameters', params.iteritems()),
+                                   ('Constraints', constraints.iteritems())):
+                self.log("{}:".format(tag))
+                for key, value in keyvalues:
+                    self.log("    {} = {}".format(key, value))
 
             layer = self.get_input_layer()
             if layer is None:
@@ -442,17 +486,39 @@ class simplipy:
             #    self.log("START EDIT")
             #    layer.startEditing()
 
+            stats = {}
+            for category in ('original', 'simplified'):
+                stats[category] = {'features': 0, 'size': 0}
+
+            def count_feature_stats(category, feature):
+                if not feature:
+                    return
+                geom = feature.geometry()
+                if not geom or geom.wkbSize() == 0:
+                    return
+                stats[category]['features'] += 1
+                stats[category]['size'] += geom.wkbSize()
+
             feature_map = {}
             for feature in self.get_features(layer):
                 gid = feature.id()
                 feature_map[gid] = feature
+                count_feature_stats('original', feature)
 
             num_features = len(feature_map)
             features = feature_map.values()
 
+            self.dlg.ui.progressBar.setFormat("%p")
+
             def setprogress(x):
-                self.dlg.ui.progressBar.setValue(x)
+                if isinstance(x, str):
+                    self.dlg.ui.progressBar.setFormat(x)
+                else:
+                    self.dlg.ui.progressBar.setFormat("%p%")
+                    self.dlg.ui.progressBar.setValue(x)
+
             def save_feature(simp_feature):
+                count_feature_stats('simplified', simp_feature)
                 if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
                     new_layer.dataProvider().addFeatures([simp_feature])
                 #if output_mode == OUTPUT_ATTRIBUTE:
@@ -468,12 +534,16 @@ class simplipy:
                 self.dlg.ui.start_button.setText("Start")
                 self.set_ui_enabled(True)
 
+                style_uri = None
+
                 if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
                     new_layer.commitChanges()
                     # add layer to layer registry
-                    uri = os.path.join(os.path.dirname(__file__), "qgis_style_test.qml")
-                    if os.path.exists(uri):
-                        new_layer.loadNamedStyle(uri)
+                    if geometry_type == "Polygon":
+                        uri = os.path.join(os.path.dirname(__file__), "qgis_style_test.qml")
+                        if os.path.exists(uri):
+                            style_uri = uri
+                            new_layer.loadNamedStyle(style_uri)
                     self.layerRegistry.addMapLayer(new_layer)
                     if output_mode == OUTPUT_NEWLAYER:
                         self.iface.legendInterface().setLayerVisible(new_layer, True)
@@ -484,15 +554,48 @@ class simplipy:
                 #     layer.commitChanges()
 
                 self.iface.mapCanvas().refresh()
-                if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
-                    new_layer.loadNamedStyle(uri)
+                if style_uri:
+                    new_layer.loadNamedStyle(style_uri)
+
+                # Print stats
+                self.log("Simplification Stats:")
+                for tag in ['features', 'size']:
+                    count_orig = stats['original'][tag]
+                    count_simp = stats['simplified'][tag]
+                    label = tag
+
+                    if tag == 'size':
+                        if count_simp > 10000:
+                            count_orig /= 1000.0
+                            count_simp /= 1000.0
+                            label += " (KB)"
+                        else:
+                            label += " (Bytes)"
+
+                    pcnt = 100.0 * count_simp / float(count_orig) if count_orig else None
+                    if pcnt:
+                        self.log("    Total {} = {} / {} ({:.2f}%)".format(label, count_simp, count_orig, pcnt))
+                    else:
+                        self.log("    Total {} = {} / {}".format(label, count_simp, count_orig))
+
+                    if tag == 'size' and (pcnt and pcnt > 95):
+                        self.log("Hint: Not enough simplification? Try modifying the algorithm parameters")
+
                 self.sthread = None
+
             def error(e):
-                self.log("Error simplifying:")
-                self.log(e)
+                msg = json.loads(e)
+                if str(type(StopSimplificationException())) == msg['error']:
+                    # Note: I don't like the way I'm checking the error class
+                    self.log("Simplification cancelled by user")
+                else:
+                    self.log("Error simplifying:")
+                    self.log(msg['trace'])
+                self.error = True
 
             self.set_ui_enabled(False)
             self.dlg.ui.start_button.setText("Stop")
+            self.dlg.ui.start_button.setDisabled(False)
             self.sthread = SimplifyThread(self.iface.mainWindow(), layer, simplifier, params, constraints, features, num_features, logger=self.log)
             QObject.connect(self.sthread, SIGNAL("jobFinished( PyQt_PyObject )"), jobfinished)
             QObject.connect(self.sthread, SIGNAL("progress( PyQt_PyObject )"), setprogress)
@@ -522,7 +625,8 @@ class simplipy:
         self.dlg.show()
 
         self.dlg.ui.simplipy_log.clear()
-        self.log("Simplipy Log:")
+        version = self.metadata.get("general", "version")
+        self.log("Simplipy {} Log:".format(version))
 
         self.refresh_input_layer_list()
         #self.refresh_output_field_list()
@@ -595,7 +699,7 @@ class SimplifyThread(WorkerThread):
         tlast = time.time()
         for item in items:
             if self.running is False:
-                raise Exception("Cancel requested")
+                raise StopSimplificationException("Cancel requested")
             yield item
             p_int = int((i*100.0) / total)
             i += 1
@@ -615,8 +719,11 @@ class SimplifyThread(WorkerThread):
             last_p = 0
             self.emit(SIGNAL("progress( PyQt_PyObject )"), 0)
             
-            def push_progress(msg):
+            def push_progress(msg, bar_msg=None):
                 self.logger("Progress = %s" % str(msg))
+                if bar_msg:
+                    self.emit(SIGNAL("progress( PyQt_PyObject )"), bar_msg)
+
 
             # Fill chain db
             self.logger("fill chain db")
@@ -651,5 +758,8 @@ class SimplifyThread(WorkerThread):
                 self.emit(SIGNAL("featureResult( PyQt_PyObject )"), f)
 
         except Exception, e:
-            self.emit(SIGNAL("error( PyQt_PyObject )"), exception_format(e))
+            message = {'trace': exception_format(e),
+                       'error': str(type(e))}
+            message = json.dumps(message)
+            self.emit(SIGNAL("error( PyQt_PyObject )"), message)
         return True

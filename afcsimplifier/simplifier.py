@@ -14,6 +14,7 @@ import copy
 import grid
 import time
 import progress
+
 # GEOMETRY_TYPES = {
 #     #0: "GeometryCollection",
 #     1: "Point",
@@ -28,7 +29,6 @@ import progress
 # def get_geometry_type(geom):
 #     return GEOMETRY_TYPES[geom.GetGeometryType()]
 
-#import quadtree
 import sys
 try:
     from shapely import speedups
@@ -255,47 +255,16 @@ class ChainDB(object):
         self.simplify_keys(self.keys.keys(), simplifier, **kwargs)
 
 
-    def fix_ring_if_not_enough_points(self, ring, min_points=3):
-        num_points = 0
-        chains = self.get_chains_by_geom(ring)
-
-        for chain_id in chains:
-            points = self.chains[chain_id][self.CHAIN_POINTS]
-            chain_size = len(filter(lambda p: p[P_REMOVED] is False, points))
-            num_points += chain_size
-
-        if num_points <= min_points:
-            ring_shares_edge = any([self.chain_shares_edges(chain_idx) for chain_idx in chains])
-            if not ring_shares_edge:
-                #use visvalingam to simplify the whole ring
-                pointsdata_list = []
-                for chain_id in chains:
-                    pointsdata_list.extend( self.chains[chain_id][self.CHAIN_POINTS] )
-                for p in pointsdata_list:
-                    p[P_REMOVED] = False
-                visvalingam(pointsdata_list, minArea = 99999, ring_min_points=min_points)
-            elif num_points < min_points:
-                # Recover "random" point
-                for chain_id in chains:
-                    points = self.chains[chain_id][self.CHAIN_POINTS]
-                    for p in points:
-                        if p[P_REMOVED] is True:
-                            p[P_REMOVED] = False
-                            num_points += 1
-                            if num_points >= min_points:
-                                return
-
-
-
     def simplify_keys(self, keys, simplifier, push_progress=None, **kwargs):
         self.junction_points = JunctionPoints()
         if self.constraint_use_topology:
             self.infer_topology()
 
-        #self.print_geoms()
-        #self.print_chains()
+        # self.print_geoms()
+        # self.print_chains()
 
-        if push_progress: push_progress('Start')
+        if push_progress:
+            push_progress('Start')
         # 1 - simplify
         keys_found = []
         for key in keys:
@@ -311,29 +280,32 @@ class ChainDB(object):
                     ):
                         simplifier(points, **kwargs)
 
-
-        # 1.a - linearrings must have 4 points atleast
+        # 1.a - linearrings must have 4 points atleast (3 distinct)
+        #     - linestring must have 2 distinct points atleast
         if self.constraint_prevent_shape_removal:
+            if push_progress:
+                push_progress("Preventing shape removal...",
+                              "Preventing shape removal... (Please wait)")
             for key in keys_found:
                 geom_idx = self.keys[key]
-                for ring in self.get_rings_by_geom(geom_idx):
-                    self.fix_ring_if_not_enough_points(ring, self.constraint_prevent_shape_removal_min_points)
-
-
+                self.prevent_shape_removal(geom_idx)
 
         # 2 - repair intersections and expand/contract constraint
         modified = True
+        iteration = 0
         while modified is True:
+            iteration += 1
             modified = False
             if self.constraint_expandcontract is not None:
                 modified |= self.apply_expandcontract(self.constraint_expandcontract, keys_found)
             if self.constraint_repair_intersections:
-                if push_progress: push_progress('Repairing intersections...')
+                if push_progress:
+                    push_progress('Repairing intersections... Iteration %s' % iteration,
+                                  "Repairing intersections... (Please wait)")
                 modified |= self.repair_intersections(**kwargs)
 
-
-        if push_progress: push_progress('Done!')
-
+        if push_progress:
+            push_progress('Done!', "Success!")
 
     def chain_shares_edges(self, chain_idx):
         chain = self.chains[chain_idx]
@@ -510,8 +482,6 @@ class ChainDB(object):
                             #chain_idx2 = len(self.chains)
                             #self.chains.append((chain[self.CHAIN_PARENTS], direction, subchain))
                             # Subchain already saved
-
-                            pass
                         new_chain_indexes.append(chain_idx2)
                         if debug:
                             print tab,"SPLIT %s to chainid=%s" % (c, chain_idx2), dbg
@@ -538,20 +508,17 @@ class ChainDB(object):
             self.print_geoms()
             self.paint_chains()
 
-
     def is_connected_by_junction(self, line1, line2, tolerance=0.01):
         key1a = coord_key2(line1[0], tolerance)
         key1b = coord_key2(line1[-1], tolerance)
         key2a = coord_key2(line2[0], tolerance)
         key2b = coord_key2(line2[-1], tolerance)
 
-
         if (key1a == key2a or key1a == key2b) and self.junction_points.has_key(key1a):
             return True
         if (key1b == key2a or key1b == key2b) and self.junction_points.has_key(key1b):
             return True
         return False
-
 
     def apply_expandcontract(self, mode, keys):
         # mode = 'Expand'
@@ -603,7 +570,7 @@ class ChainDB(object):
                 for k in xrange(a+2, b+1):
                     L.append(k)
                     while len(L) > 2 and geotool.ccw_norm(points[L[-3]][P_COORD],
-                                            points[L[-2]][P_COORD], points[L[-1]][P_COORD]) == side:
+                                                          points[L[-2]][P_COORD], points[L[-1]][P_COORD]) == side:
                         L.pop(len(L)-2)
                 for k in L:
                     if points[k][P_REMOVED]:
@@ -611,9 +578,6 @@ class ChainDB(object):
                     points[k][P_REMOVED] = False
 
         return modified
-
-
-
 
     def repair_intersections(self, **kwargs):
         repaired = False
@@ -643,7 +607,6 @@ class ChainDB(object):
             print "iteration time = %.2f" % (time.time() - t)
         print "Total time = %.2f" % (time.time() - tstart)
         return repaired
-
 
     def _repair_intersections(self, cs, iter_k, epsilon, debug=False):
         # returns true if a point was recovered, false otherwise
@@ -785,7 +748,7 @@ class ChainDB(object):
 
     def _add_geometry(self, key, geometry, parent=None, **kwargs):
         if geometry is not None:
-            item = [geometry.type, parent, None] # 0=type, 1=parent(index), 2=children(index)
+            item = [geometry.type, parent, None]  # 0=type, 1=parent(index), 2=children(index)
         else:
             item = [None, parent, None]
 
@@ -794,7 +757,7 @@ class ChainDB(object):
 
         if geometry is None:
             return i
-        elif geometry.type == "MultiPolygon":
+        elif geometry.type in ["MultiPolygon", "MultiLineString"]:
             children = [self._add_geometry(key, poly, parent=i, **kwargs) for poly in geometry.geoms]
         elif geometry.type == 'Polygon':
             children = []
@@ -807,7 +770,14 @@ class ChainDB(object):
         elif geometry.type == 'LinearRing':
             children = []
             points = self.linearring_to_point_list(geometry, is_exterior=kwargs['is_exterior'])
-            chain_data = ([i], to_points_data(points)) # (parents (this ring), direction, list of points)
+            chain_data = ([i], to_points_data(points))  # (parents (this ring), list of points)
+            self.chains.append(chain_data)
+            c = len(self.chains)-1
+            children.append(c)
+        elif geometry.type == "LineString":
+            children = []
+            points = list(geometry.coords)
+            chain_data = ([i], to_points_data(points))
             self.chains.append(chain_data)
             c = len(self.chains)-1
             children.append(c)
@@ -821,7 +791,6 @@ class ChainDB(object):
         if geometry.is_ccw == is_exterior:
             point_list = point_list[::-1]
         return point_list
-
 
     def split_chain(self, point_list):
         # each point list includes the first and last point of the next point list.
@@ -848,39 +817,137 @@ class ChainDB(object):
         else:
             yield point_list
 
-    def pointsdata_list_to_linearring(self, pointsdata_list):
-        if len(pointsdata_list) == 0:
-            return None
-        result = copy.copy(pointsdata_list[0])
-        i = 1
-        while i < len(pointsdata_list):
-            point_list = pointsdata_list[i]
-            if result[-1] == point_list[0]:
-                result += point_list[1:]
-            else:
-                result += point_list
-            i += 1
-        return result
+    def prevent_shape_removal(self, geom_idx):
+        for child_geom_idx in self._get_line_primitives(geom_idx):
+            self.fix_line_if_not_enough_points(child_geom_idx, self.constraint_prevent_shape_removal_min_points)
 
-    def get_rings_by_geom(self, geom_idx):
+    def _get_line_primitives(self, geom_idx):
+        """ Returns geom_idx for linestrings and linearrings in geometry [geom_idx]"""
         geom = self.geometries[geom_idx]
-        if geom[self.GEOM_TYPE] == "LinearRing":
+        gtype = geom[self.GEOM_TYPE]
+        if gtype == "LinearRing" or gtype == "LineString":
             yield geom_idx
         else:
             for children_geom_idx in geom[self.GEOM_CHILDREN]:
-                for ring in self.get_rings_by_geom(children_geom_idx):
-                    yield ring
+                for ring_geom_idx in self._get_line_primitives(children_geom_idx):
+                    yield ring_geom_idx
 
+    def fix_line_if_not_enough_points(self, geom_idx, min_points=3):
+        """ Recover points from a simplified geometry (geom_idx) to have atleast [min_points] distinct points.
+        Works only if geom_idx is a LinearRing or LineString.
+        """
+        num_points = 0
+        original_num_points = 0
+        chains = self.get_chains_by_geom(geom_idx)
+        geom = self.geometries[geom_idx]
+
+        # Get all points of the ring
+        for chain_id in chains:
+            points = self.chains[chain_id][self.CHAIN_POINTS]
+            chain_size = len(filter(lambda p: p[P_REMOVED] is False, points))
+            num_points += chain_size
+            original_num_points += len(points)
+
+        # Check if line is a closed chain
+        first_point = self.chains[chains[0]][self.CHAIN_POINTS][0]
+        last_point = self.chains[chains[-1]][self.CHAIN_POINTS][-1]
+        closed_chain = (first_point[P_COORD] == last_point[P_COORD])
+
+        if closed_chain:
+            if not first_point[P_REMOVED] and not last_point[P_REMOVED]:
+                # Was counted twice
+                num_points -= 1
+                original_num_points -= 1
+
+            if num_points < min_points:
+                if first_point[P_REMOVED] and last_point[P_REMOVED]:
+                    # Will now recover
+                    num_points += 1
+
+                # Closed chains must remain closed
+                first_point[P_REMOVED] = False
+                last_point[P_REMOVED] = False
+
+        # If not enough points, simplify again using visvalingam until MIN_POINTS is reached when possible
+        if num_points < min_points:
+            # Check if any part of the chain is shared for multiple geometries (when using topology)
+            shares_edge = any([self.chain_shares_edges(chain_idx) for chain_idx in chains])
+            if not shares_edge and closed_chain:
+                # use visvalingam to simplify the whole ring
+                pointsdata_list = []
+                for chain_id in chains:
+                    pointsdata_list.extend(self.chains[chain_id][self.CHAIN_POINTS])
+                for p in pointsdata_list:
+                    p[P_REMOVED] = False
+                visvalingam(pointsdata_list, minArea=99999, ring_min_points=min_points)
+
+                # Closed linestrings must remain closed
+                if geom[self.GEOM_TYPE] == "LineString":
+                    first_point[P_REMOVED] = False
+                    last_point[P_REMOVED] = False
+            # Not allowed to do polygon simplification
+            elif num_points < min_points:
+                # Recover "random" point (TODO: IMPROVE THIS. MAYBE USE VISVALINGAM IN SOME WAY)
+                recover_points = (min_points - num_points)
+                delta = (original_num_points - num_points) / recover_points
+                # Unflag as deleted one point for every [delta] points
+                # This will flag [recover_points] points
+                cnt = delta / 2  # start counting at [delta/2] to unflag middle points
+                for chain_id in chains:
+                    points = self.chains[chain_id][self.CHAIN_POINTS]
+                    for p in points:
+                        if not p[P_REMOVED]:
+                            continue
+                        cnt += 1
+                        if cnt < delta:
+                            continue
+                        p[P_REMOVED] = False
+                        num_points += 1
+                        cnt = 0
+
+    def fix_ring_if_not_enough_points(self, ring_geom_idx, min_points=3):
+        num_points = 0
+        chains = self.get_chains_by_geom(ring_geom_idx)
+
+        # Get all points of the ring
+        for chain_id in chains:
+            points = self.chains[chain_id][self.CHAIN_POINTS]
+            chain_size = len(filter(lambda p: p[P_REMOVED] is False, points))
+            num_points += chain_size
+
+        # If not enough points, simplify again using visvalingam until MIN_POINTS is reached when possible
+        if num_points <= min_points:
+            ring_shares_edge = any([self.chain_shares_edges(chain_idx) for chain_idx in chains])
+            if not ring_shares_edge:
+                # use visvalingam to simplify the whole ring
+                pointsdata_list = []
+                for chain_id in chains:
+                    pointsdata_list.extend(self.chains[chain_id][self.CHAIN_POINTS])
+                for p in pointsdata_list:
+                    p[P_REMOVED] = False
+                visvalingam(pointsdata_list, minArea=99999, ring_min_points=min_points)
+            elif num_points < min_points:
+                # Recover "random" point
+                for chain_id in chains:
+                    points = self.chains[chain_id][self.CHAIN_POINTS]
+                    for p in points:
+                        if p[P_REMOVED] is True:
+                            p[P_REMOVED] = False
+                            num_points += 1
+                            if num_points >= min_points:
+                                return
 
     def get_chains_by_geom(self, geom_idx):
         geom = self.geometries[geom_idx]
         if geom[self.GEOM_TYPE] is None:
             return []
-        elif geom[self.GEOM_TYPE] == "LinearRing":
+        elif geom[self.GEOM_TYPE] in ["LinearRing", 'LineString']:
             chain_ids = geom[self.GEOM_CHILDREN]
             return chain_ids
+        elif geom[self.GEOM_TYPE] in ['Polygon', 'MultiPolygon', 'MultiLineString']:
+            return reduce(lambda a, b: a+b, map(self.get_chains_by_geom, geom[self.GEOM_CHILDREN]))
         else:
-            return reduce(lambda a,b: a+b, map(self.get_chains_by_geom, geom[self.GEOM_CHILDREN]))
+            raise NotImplemented("get_chains_by_geom not implemented for {}".format(geom[self.GEOM_TYPE]))
 
     def get_chains_by_geom2(self, geom_idx):
         # like get_chains_by_geom, but also returns if chain_id is reversed
@@ -905,15 +972,18 @@ class ChainDB(object):
         (gtype, parent, children) = self.geometries[geom_idx]
         if gtype is None:
             return None
-        elif gtype == "MultiPolygon":
-            geom = ogr.Geometry(ogr.wkbMultiPolygon)
+        elif gtype in ["MultiPolygon", "MultiLineString"]:
+            if gtype == "MultiPolygon":
+                geom = ogr.Geometry(ogr.wkbMultiPolygon)
+            else:
+                geom = ogr.Geometry(ogr.wkbMultiLineString)
             cnt = 0
             for j in children:
                 subgeom = self._build_geometry(j)
                 if subgeom is not None:
                     cnt += 1
                     geom.AddGeometry(subgeom)
-            if cnt == 0: # No polygons added
+            if cnt == 0:  # No geometries added
                 return None
         elif gtype == "Polygon":
             geom = ogr.Geometry(ogr.wkbPolygon)
@@ -927,53 +997,103 @@ class ChainDB(object):
             geom = ogr.Geometry(ogr.wkbLinearRing)
 
             # get all chains in the correct order
-            points_data_list = []
-            for c in children:
-                chain = self.chains[c]
-                points = chain[self.CHAIN_POINTS]
+            points_data_list = self._build_retrieve_chain_points(geom_idx)
 
-                # direction?
-                if chain[self.CHAIN_PARENTS][0] == geom_idx:
-                    direction = DIRECTION_NORMAL
-                elif chain[self.CHAIN_PARENTS][1] == geom_idx:
-                    direction = DIRECTION_REVERSE
-                else:
-                    print "chain error: geomidx=%s, chain=%s" % (geom_idx, c)
-                    raise Exception("LinearRing has a chain in which is not marked as a parent!?")
-
-                if direction == DIRECTION_REVERSE:
-                    points = points[::-1]
-                points_data_list.append(points)
-
-            pointsdata_ring = self.pointsdata_list_to_linearring(points_data_list)      # merge chains
+            # merge chains
+            pointsdata_ring = self._merge_pointsdata_list(points_data_list)
             if pointsdata_ring is None:
                 return None
-
 
             cnt = 0
             p_first = None
             p_last = None
-            for p in pointsdata_ring: # add poitns to the linearring (only those which are not removed)
-                if p[P_REMOVED] is False:
-                    if p_first is None:
-                        p_first = p
-                    cnt += 1
-                    geom.AddPoint_2D(*(p[P_COORD]))
-                    p_last = p
+            for p in self._build_pointsdata_filter_removed(pointsdata_ring):
+                if p_first is None:
+                    p_first = p
+                cnt += 1
+                geom.AddPoint_2D(*(p[P_COORD]))
+                p_last = p
             if p_last != p_first:
                 geom.AddPoint_2D(*(p_first[P_COORD]))
                 cnt += 1
 
-            if cnt <= 3: # LinearRing must contain 3 or more distinct points!
+            if cnt <= 3:  # LinearRing must contain 3 or more distinct points!
                 if self.constraint_prevent_shape_removal:
                     print "Warning: LinearRing(%s) with %s points found!" % (geom_idx, cnt)
                     print filter(lambda p: p[P_REMOVED] is False, pointsdata_ring)
                 return None
-            #if len(pointsdata_ring) > 1000:
-            #    print "%s -> %s" % (len(pointsdata_ring), cnt)
+        elif gtype == "LineString":
+            geom = ogr.Geometry(ogr.wkbLineString)
+
+            points_data_list = self._build_retrieve_chain_points(geom_idx)
+
+            # merge chains
+            pointsdata = self._merge_pointsdata_list(points_data_list)
+            if pointsdata is None:
+                return None
+
+            cnt = 0
+            for p in self._build_pointsdata_filter_removed(pointsdata):
+                geom.AddPoint_2D(*(p[P_COORD]))
+                cnt += 1
+
+            if cnt < 2:
+                # LineString must contain 2 or more distinct points!
+                if self.constraint_prevent_shape_removal:
+                    print "Warning: LineString(%s) with %s points found!" % (geom_idx, cnt)
+                    print filter(lambda p: p[P_REMOVED] is False, pointsdata)
+                return None
         else:
             raise Exception("Build geometry type %s not implemented" % gtype)
         return geom
+
+    def _build_pointsdata_filter_removed(self, pointsdata):
+        for p in pointsdata: # add points to the linearring (only those which are not removed)
+            if p[P_REMOVED] is False:
+                yield p
+
+    def _merge_pointsdata_list(self, pointsdata_list):
+        """ Merge a list of list of points (Make sure last and first point of every chain wont appear twice)
+        """
+        if len(pointsdata_list) == 0:
+            return None
+        result = copy.copy(pointsdata_list[0])
+        i = 1
+        while i < len(pointsdata_list):
+            point_list = pointsdata_list[i]
+            if result[-1] == point_list[0]:
+                result += point_list[1:]
+            else:
+                result += point_list
+            i += 1
+        return result
+
+    def _build_retrieve_chain_points(self, geom_idx):
+        """ Get all chain points in the correct point order for the geometry
+        :return: list of list points
+        """
+        (gtype, parent, children) = self.geometries[geom_idx]
+        if gtype not in ["LinearRing", "LineString"]:
+            raise ValueError("Can't retrieve chain points for geometry type={}".format(gtype))
+
+        points_data_list = []
+        for c in children:
+            chain = self.chains[c]
+            points = chain[self.CHAIN_POINTS]
+
+            # direction?
+            if chain[self.CHAIN_PARENTS][0] == geom_idx:
+                direction = DIRECTION_NORMAL
+            elif chain[self.CHAIN_PARENTS][1] == geom_idx:
+                direction = DIRECTION_REVERSE
+            else:
+                print "chain error: geomidx=%s, chain=%s" % (geom_idx, c)
+                raise Exception("{} has a chain in which is not marked as a parent!?".format(gtype))
+
+            if direction == DIRECTION_REVERSE:
+                points = points[::-1]
+            points_data_list.append(points)
+        return points_data_list
 
     def to_wkb(self, key):
         # generate wkb for all geometries
