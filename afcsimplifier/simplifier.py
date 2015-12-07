@@ -14,6 +14,7 @@ import copy
 import grid
 import time
 import progress
+
 # GEOMETRY_TYPES = {
 #     #0: "GeometryCollection",
 #     1: "Point",
@@ -28,7 +29,6 @@ import progress
 # def get_geometry_type(geom):
 #     return GEOMETRY_TYPES[geom.GetGeometryType()]
 
-#import quadtree
 import sys
 try:
     from shapely import speedups
@@ -757,7 +757,7 @@ class ChainDB(object):
 
         if geometry is None:
             return i
-        elif geometry.type == "MultiPolygon":
+        elif geometry.type in ["MultiPolygon", "MultiLineString"]:
             children = [self._add_geometry(key, poly, parent=i, **kwargs) for poly in geometry.geoms]
         elif geometry.type == 'Polygon':
             children = []
@@ -944,8 +944,8 @@ class ChainDB(object):
         elif geom[self.GEOM_TYPE] in ["LinearRing", 'LineString']:
             chain_ids = geom[self.GEOM_CHILDREN]
             return chain_ids
-        elif geom[self.GEOM_TYPE] in ['Polygon', 'MultiPolygon']:
-            return reduce(lambda a,b: a+b, map(self.get_chains_by_geom, geom[self.GEOM_CHILDREN]))
+        elif geom[self.GEOM_TYPE] in ['Polygon', 'MultiPolygon', 'MultiLineString']:
+            return reduce(lambda a, b: a+b, map(self.get_chains_by_geom, geom[self.GEOM_CHILDREN]))
         else:
             raise NotImplemented("get_chains_by_geom not implemented for {}".format(geom[self.GEOM_TYPE]))
 
@@ -972,15 +972,18 @@ class ChainDB(object):
         (gtype, parent, children) = self.geometries[geom_idx]
         if gtype is None:
             return None
-        elif gtype == "MultiPolygon":
-            geom = ogr.Geometry(ogr.wkbMultiPolygon)
+        elif gtype in ["MultiPolygon", "MultiLineString"]:
+            if gtype == "MultiPolygon":
+                geom = ogr.Geometry(ogr.wkbMultiPolygon)
+            else:
+                geom = ogr.Geometry(ogr.wkbMultiLineString)
             cnt = 0
             for j in children:
                 subgeom = self._build_geometry(j)
                 if subgeom is not None:
                     cnt += 1
                     geom.AddGeometry(subgeom)
-            if cnt == 0: # No polygons added
+            if cnt == 0:  # No geometries added
                 return None
         elif gtype == "Polygon":
             geom = ogr.Geometry(ogr.wkbPolygon)
