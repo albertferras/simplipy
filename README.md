@@ -1,4 +1,4 @@
-SimpliPy v0.4. QGIS plugin and Python module to simplify geometries
+SimpliPy - QGIS plugin and Python module to simplify geometries
 =============
 
 Plugin for qgis to simplify geometries with multiple constraints and advanced options.
@@ -45,3 +45,8 @@ Shapely 1.2.18 or higher
 
 
 If you don't have shapely installed, you might get a "invalid literal for int() with base 2: 2 r3921" message when installing the plugin.
+
+
+Problems?
+---------
+If you are having any problem like SimpliPy crashes or uses too much memory, please send me a message or create an issue to prevent other users from having the same problems. When creating an issue, please include if possible: SimpliPy Configuration + Log, input geometries (url to download), and a short description of the issue.
