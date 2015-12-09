@@ -1,4 +1,4 @@
-SimpliPy. QGIS plugin and Python module to simplify geometries
+SimpliPy v0.4. QGIS plugin and Python module to simplify geometries
 =============
 
 Plugin for qgis to simplify geometries with multiple constraints and advanced options.
