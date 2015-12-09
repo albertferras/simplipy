@@ -32,6 +32,12 @@ QGIS polygon simplification (Threshold=0.200deg):
 SimpliPy 0.40 (DouglasPeucker, Threshold=0.200deg, Constraints=PreserveTopology,PreventShapeRemoval):
 ![Alt text](/images/simplipy.png?raw=true "Optional Title")
 
+Not only it fixes the holes/overlapping areas issues, but also allows you to simplify in more advanced ways, such as "Simplify the countries coasts, but only by making the geometry bigger so that the original geometry is contained in the simplified geometry":
+
+SimpliPy 0.40 (DouglasPeucker, Threshold=0.400deg, Constraints=PreserveTopology,Expand only,PreverseTopology+NonSharedEdges only enabled):
+![Alt text](/images/simplipy_expand.png?raw=true "Optional Title")
+
+
 
 Dependencies
 ------------
