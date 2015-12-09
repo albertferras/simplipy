@@ -50,3 +50,5 @@ If you don't have shapely installed, you might get a "invalid literal for int() 
 Problems?
 ---------
 If you are having any problem like SimpliPy crashes or uses too much memory, please send me a message or create an issue to prevent other users from having the same problems. When creating an issue, please include if possible: SimpliPy Configuration + Log, input geometries (url to download), and a short description of the issue.
+
+I'm aware that some datasets make simplipy use too much memory and makes it crash. This is a priority to fix for the next version.
