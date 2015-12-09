@@ -15,6 +15,7 @@ description=Simplification tools with constraints
 version=0.40
 author=Albert Ferràs
 email=albertferras@gmail.com
+about=Plugin to simplify geometries with multiple algorithm, parameters and constraints with advanced options
 
 # end of mandatory metadata
 
