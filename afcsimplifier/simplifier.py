@@ -76,27 +76,24 @@ class ChainsSegment(object):
 
     def get_segment_coordinates(self, seg_id):
         c = seg_id[self.SEGID_CHAIN]
-        (i,j) = seg_id[self.SEGID_POINTS_IDX]
+        (i, j) = seg_id[self.SEGID_POINTS_IDX]
         chain_points = self.get_chain_points(c)
-        return (chain_points[i][P_COORD], chain_points[j][P_COORD])
+        return chain_points[i][P_COORD], chain_points[j][P_COORD]
 
     def is_consecutive_segments(self, seg_id1, seg_id2):
+        """ Returns true if segments seg_id1,2 are from the same chain and are consecutive (touching endpoints)
+        """
         # works if its the same chain only!
         c1 = seg_id1[self.SEGID_CHAIN]
         c2 = seg_id2[self.SEGID_CHAIN]
-        # same parent, maybe consecutive segments!
-        (i1, j1) = seg_id1[self.SEGID_POINTS_IDX]
-        (i2, j2) = seg_id2[self.SEGID_POINTS_IDX]
-        n1 = len(self.get_chain_points(c1))
-        n2 = len(self.get_chain_points(c2))
-
         if c1 == c2:
-            startpoint1 = (i1 == 0)
-            endpoint1 = (j1 == n1-1)
-            startpoint2 = (i2 == 0)
-            endpoint2 = (j2 == n2-1)
-            # Same chain, check if consecutive segments
-            return (j1 == i2 or j2 == i1) or (endpoint1 and startpoint2) or (endpoint2 and startpoint1)
+            # Segments come from the same chain, now check if they're consecutive
+            points = self.get_chain_points(c1)
+            (i1, j1) = seg_id1[self.SEGID_POINTS_IDX]
+            (i2, j2) = seg_id2[self.SEGID_POINTS_IDX]
+            if (points[i1][P_COORD] == points[j2][P_COORD]
+                    or points[i2][P_COORD] == points[j1][P_COORD]):
+                return True
         return False
 
     def new_segment(self, chain_idx, i, j):
@@ -115,7 +112,7 @@ class ChainsSegment(object):
 
     def get_segment_original_chain_coordinates(self, seg_id):
         chain_idx = seg_id[self.SEGID_CHAIN]
-        (i,j) = seg_id[self.SEGID_POINTS_IDX]
+        (i, j) = seg_id[self.SEGID_POINTS_IDX]
         points = self.get_chain_points(chain_idx)
         return map(lambda p: p[P_COORD], points[i:j+1])
 
@@ -123,7 +120,7 @@ class ChainsSegment(object):
         chain_idx = seg_id[self.SEGID_CHAIN]
         sidx = seg_id[self.SEGID_IDX]
         (i, j) = seg_id[self.SEGID_POINTS_IDX]
-        self.segments[sidx] = None # Mark this segment as deleted
+        self.segments[sidx] = None  # Mark this segment as deleted
         k = i
         for l in points_idx[1:]:
             l += i
@@ -254,7 +251,6 @@ class ChainDB(object):
     def simplify_all(self, simplifier, **kwargs):
         self.simplify_keys(self.keys.keys(), simplifier, **kwargs)
 
-
     def simplify_keys(self, keys, simplifier, push_progress=None, **kwargs):
         self.junction_points = JunctionPoints()
         if self.constraint_use_topology:
@@ -292,17 +288,27 @@ class ChainDB(object):
 
         # 2 - repair intersections and expand/contract constraint
         modified = True
+        last_modified_by = None
         iteration = 0
-        while modified is True:
+        while modified:
             iteration += 1
             modified = False
-            if self.constraint_expandcontract is not None:
-                modified |= self.apply_expandcontract(self.constraint_expandcontract, keys_found)
-            if self.constraint_repair_intersections:
+            # Expand Contract constraint
+            modifier = 1
+            if modifier != last_modified_by and self.constraint_expandcontract is not None:
+                if self.apply_expandcontract(self.constraint_expandcontract, keys_found):
+                    modified = True
+                    last_modified_by = modifier
+
+            # Repair Intersections
+            modifier = 2
+            if modifier != last_modified_by and self.constraint_repair_intersections:
                 if push_progress:
                     push_progress('Repairing intersections... Iteration %s' % iteration,
                                   "Repairing intersections... (Please wait)")
-                modified |= self.repair_intersections(**kwargs)
+                if self.repair_intersections(**kwargs):
+                    modified = True
+                    last_modified_by = modifier
 
         if push_progress:
             push_progress('Done!', "Success!")
@@ -335,7 +341,6 @@ class ChainDB(object):
         if debug:
             self.print_geoms()
             self.print_chains()
-
 
         K = self.constraint_use_topology_snap_precision
         # Identify junctions between chains
@@ -381,26 +386,17 @@ class ChainDB(object):
 
         def _get_j2j_chain(key1, key2, chain_points):
             chain_idxs_marked = junction_to_junction.get((key1, key2))
-            #print "getj2j", key1, key2, chain_idxs_marked
             if chain_idxs_marked is not None:
                 for chain_idx2 in chain_idxs_marked:
-                    #print "possible chain dup: ", chain_idx2
                     # verify that it's the same chain
                     p1 = chain_points
                     p2 = self.chains[chain_idx2][self.CHAIN_POINTS]
-
-                    #print "p1=", p1[0:2], p1[-2:]
-                    #print "p2=", p2[0:2], p2[-2:]
 
                     if point_key2(p1[0], K) != point_key2(p2[0], K) or point_key2(p1[-1], K) != point_key2(p2[-1], K):
                         raise Exception("this cant happen (j2j)")
 
                     if point_key2(p1[1], K) == point_key2(p2[1], K):
-                        #print "SAME!"
                         return chain_idx2
-                    #else:
-                    #    print "distinct"
-
             return None
 
         def get_junction_to_junction_chain(key1, key2, chain_points):
@@ -411,9 +407,7 @@ class ChainDB(object):
                 chain_idx2 = _get_j2j_chain(key2, key1, chain_points[::-1])
             return (direction, chain_idx2)
 
-
         disable_chains = set()
-
         for geom in self.geometries:
             if geom[self.GEOM_TYPE] != "LinearRing":
                 continue
@@ -422,12 +416,12 @@ class ChainDB(object):
                 print "Geom %s" % geom[self.GEOM_PARENT]
             geom_chains = geom[self.GEOM_CHILDREN]
 
-
             new_chain_indexes = []
             chain_created = False
             for c in geom_chains:
-                if debug: print "CHAIN %s (parent=%s)" % (c, self.chains[c][self.CHAIN_PARENTS])
-                tab = "    "
+                if debug:
+                    print "CHAIN %s (parent=%s)" % (c, self.chains[c][self.CHAIN_PARENTS])
+                    tab = "    "
                 disable_chain = True
                 chain = self.chains[c]
                 parents = chain[self.CHAIN_PARENTS]
@@ -447,19 +441,18 @@ class ChainDB(object):
                         (direction, chain_idx2) = get_junction_to_junction_chain(start_key, key, subchain)
 
                         if debug:
-                            print tab,"start_key=%s -> %s" % (start_key, key)
-                            print tab,"Chain %s----->%s" % (list(self.junction_points.get(start_key)),list(self.junction_points.get(key)))
-
+                            print tab, "start_key=%s -> %s" % (start_key, key)
+                            print tab, "Chain %s----->%s" % (list(self.junction_points.get(start_key)),
+                                                             list(self.junction_points.get(key)))
 
                         # check if junction to junction A->B->A
                         if chain_idx2 is not None:
                             if self.chains[chain_idx2][self.CHAIN_PARENTS] == self.chains[c][self.CHAIN_PARENTS]:
                                 chain_idx2 = None
 
-
                         if chain_idx2 is None:
                             # Subchain not yet saved
-                            if (j == len(points)-1 and chain_created is False):
+                            if j == len(points)-1 and chain_created is False:
                                 # if last point in the chain but there was no junction inbetween
                                 # no need to create new chain
                                 chain_idx2 = c
@@ -474,17 +467,18 @@ class ChainDB(object):
                             mark_junction_to_junction_chain(start_key, key, chain_idx2)
                         else:
                             chain_created = True
-                            subchain = self.chains[chain_idx2][self.CHAIN_POINTS] # two chains from distinct polygons will share the memory space
+                            # two chains from distinct polygons will share the memory space
+                            # subchain = self.chains[chain_idx2][self.CHAIN_POINTS]
                             dbg = "reused %s" % chain_idx2
 
                             self.chains[chain_idx2][self.CHAIN_PARENTS].append(parents[0])
 
-                            #chain_idx2 = len(self.chains)
-                            #self.chains.append((chain[self.CHAIN_PARENTS], direction, subchain))
+                            # chain_idx2 = len(self.chains)
+                            # self.chains.append((chain[self.CHAIN_PARENTS], direction, subchain))
                             # Subchain already saved
                         new_chain_indexes.append(chain_idx2)
                         if debug:
-                            print tab,"SPLIT %s to chainid=%s" % (c, chain_idx2), dbg
+                            print tab, "SPLIT %s to chainid=%s" % (c, chain_idx2), dbg
                         i = j
                         start_key = key
                     j += 1
@@ -503,7 +497,7 @@ class ChainDB(object):
                 self.chains[c] = None
 
         # 4 - Share chains
-        #print_chains()
+        # print_chains()
         if debug:
             self.print_geoms()
             self.paint_chains()
@@ -594,7 +588,7 @@ class ChainDB(object):
             t = time.time()
             print "Iteration %s" % iterations
 
-            debug= (iterations == self.max_iter)
+            debug = (iterations == self.max_iter)
 
             iter_k_next = len(cs.segments)
 
@@ -609,6 +603,8 @@ class ChainDB(object):
         return repaired
 
     def _repair_intersections(self, cs, iter_k, epsilon, debug=False):
+        if debug:
+            print "repair:", iter_k, epsilon
         # returns true if a point was recovered, false otherwise
         repaired = False
         stop = False
@@ -619,7 +615,7 @@ class ChainDB(object):
         while iter_k < len(cs.segments):
             s1 = cs.segments[iter_k]
             iter_k += 1
-            if s1 is None: # original or fixed segments doesn't have to be checked
+            if s1 is None:  # original or fixed segments doesn't have to be checked
                 continue
             seg_id = s1[ChainsSegment.SEGMENT_SEGID]
             #if is_original_segment(seg_id):
@@ -629,15 +625,26 @@ class ChainDB(object):
                 if seg_id == seg_id2:
                     continue
                 if cs.is_consecutive_segments(seg_id, seg_id2):
+                    # Consecutive segments
+
+                    # If lines are collinear, delete common endpoint to save 1 point and avoid self-intersection
+                    line2 = cs.get_segment_coordinates(seg_id2)
+                    p, q = line1
+                    r, s = line2
+                    ccw = geotool.ccw(q, p, r) if p == s else geotool.ccw(p, q, s)
+                    if ccw == 0:  # If collinear
+                        intersections.append((seg_id, seg_id2))
                     continue
                 if cs.is_deleted_segment(seg_id2):
                     continue
                 if cs.is_sharing_chain_with_neighbour(seg_id, seg_id2):
                     continue
-                if seg_id > seg_id2 or cs.is_original_segment(seg_id2): # don't compare 2 segments twice or a segment with itself
+                # don't compare 2 segments twice or a segment with itself
+                if seg_id > seg_id2 or cs.is_original_segment(seg_id2):
                     line2 = cs.get_segment_coordinates(seg_id2)
                     if geotool.crosses(line1, line2, endpoint_intersects=True) and not self.is_connected_by_junction(line1, line2, tolerance=self.constraint_use_topology_snap_precision):
-                        if debug: print "INTERSECTION:", seg_id, seg_id2
+                        if debug:
+                            print "INTERSECTION:", seg_id, seg_id2
                         intersections.append((seg_id, seg_id2))
         if debug:
             print "Find intersections time = %.2f" % (time.time() - t)
@@ -651,8 +658,9 @@ class ChainDB(object):
             lineA = cs.get_segment_coordinates(segA_id)
             lineB = cs.get_segment_coordinates(segB_id)
 
-            if sa is None or sb is None: # If this intersection was fixed in a previously iteration
-                if debug: print "Skip %s %s" % (p1, p2)
+            if sa is None or sb is None:  # If this intersection was fixed in a previously iteration
+                if debug:
+                    print "Skip %s %s" % (sa, sb)
                 continue
 
             if debug:
@@ -689,7 +697,7 @@ class ChainDB(object):
                 else:
                     # never check this again. intersection can't be fixed
                     if debug:
-                        print "Unfixable %s %s" % (p1, p2)
+                        print "Unfixable %s %s" % (sa, sb)
                     continue
 
             # Construct detour graph, G(s), corresponding to s.
@@ -714,9 +722,9 @@ class ChainDB(object):
             if shortest_path is not None:
                 cs.recover_chain_points(s[ChainsSegment.SEGMENT_SEGID], shortest_path)
                 repaired = True
-                if debug: print "Fix SGD %s %s" % (p1, p2)
+                if debug: print "Fix SGD %s %s" % (sa, sb)
             else:
-                if debug: print "Fix Rand %s %s" % (p1, p2)
+                if debug: print "Fix Rand %s %s" % (sa, sb)
                 # Shortest path not found. Select random vertex from C(s) and C(s')
                 # Instead of random, we select the vertex in the middle(array length) of each chain.
                 #if debug:
@@ -737,7 +745,11 @@ class ChainDB(object):
         try:
             geometry = shapely.wkb.loads(wkb)
         except:
+            print "Couldn't import geometry [{}], ignoring".format(key)
+            import traceback
+            traceback.print_exc()
             geometry = None
+            raise
 
         self.keys[key] = None # geom index
         i = self._add_geometry(key, geometry)
