@@ -709,9 +709,11 @@ class ChainDB(object):
             # a lower tolerance.
 
             if len(C) < 500:
-                t = time.time()
+                if debug:
+                    t = time.time()
                 allowed_shortcuts = geotool.compute_allowed_shortcuts(C, epsilon)
-                if debug: print "AllShortCuts = %.3f (%s points)" % (time.time() - t, len(C))
+                if debug:
+                    print "AllShortCuts = %.3f (%s points)" % (time.time() - t, len(C))
                 # filter edges in graph G that intersect s'
                 geotool.filter_edges_crossing_line(allowed_shortcuts, C, lineSP)
                 # Find shortest path in detour-graph
@@ -722,14 +724,16 @@ class ChainDB(object):
             if shortest_path is not None:
                 cs.recover_chain_points(s[ChainsSegment.SEGMENT_SEGID], shortest_path)
                 repaired = True
-                if debug: print "Fix SGD %s %s" % (sa, sb)
+                if debug:
+                    print "Fix SGD %s %s" % (sa, sb)
             else:
-                if debug: print "Fix Rand %s %s" % (sa, sb)
+                if debug:
+                    print "Fix Rand %s %s" % (sa, sb)
                 # Shortest path not found. Select random vertex from C(s) and C(s')
                 # Instead of random, we select the vertex in the middle(array length) of each chain.
-                #if debug:
-                #    print "COULDNT FIND SHORTEST PATH! MUST IMPLEMENT ALTERNATIVE"
-                #shortest_path = range(len(C))
+                # if debug:
+                #     print "COULDNT FIND SHORTEST PATH! MUST IMPLEMENT ALTERNATIVE"
+                # shortest_path = range(len(C))
                 Cn = len(C)
                 Cpn = len(Cp)
                 # TODO: dont recover a point which create a intersection!
@@ -1060,7 +1064,7 @@ class ChainDB(object):
         return geom
 
     def _build_pointsdata_filter_removed(self, pointsdata):
-        for p in pointsdata: # add points to the linearring (only those which are not removed)
+        for p in pointsdata:  # add points to the linearring (only those which are not removed)
             if p[P_REMOVED] is False:
                 yield p
 
@@ -1073,10 +1077,8 @@ class ChainDB(object):
         i = 1
         while i < len(pointsdata_list):
             point_list = pointsdata_list[i]
-            if result[-1] == point_list[0]:
-                result += point_list[1:]
-            else:
-                result += point_list
+            # by definition: multiple chains always share their endpoints
+            result += point_list[1:]
             i += 1
         return result
 
@@ -1085,22 +1087,27 @@ class ChainDB(object):
         :return: list of list points
         """
         (gtype, parent, children) = self.geometries[geom_idx]
-        if gtype not in ["LinearRing", "LineString"]:
+        if gtype not in {"LinearRing", "LineString"}:
             raise ValueError("Can't retrieve chain points for geometry type={}".format(gtype))
 
         points_data_list = []
+        # Geometry is made of 1 or more chains
         for c in children:
             chain = self.chains[c]
             points = chain[self.CHAIN_POINTS]
 
-            # direction?
+            # Direction?
+            # A chain can be shared between 1 or 2 distinct geometries.
+            # By definition, the order of points is reversed for the second parent.
+            # (TODO: implement sharing chain on overlapping polygons -> chain could be shared between more than 2 geoms)
             if chain[self.CHAIN_PARENTS][0] == geom_idx:
                 direction = DIRECTION_NORMAL
             elif chain[self.CHAIN_PARENTS][1] == geom_idx:
                 direction = DIRECTION_REVERSE
             else:
+                # Parent points to chain c as a children. But geom_idx is not in chain c parents. Impossible
                 print "chain error: geomidx=%s, chain=%s" % (geom_idx, c)
-                raise Exception("{} has a chain in which is not marked as a parent!?".format(gtype))
+                raise Exception("Inconsistency: Parent's children is not in children parents".format(gtype))
 
             if direction == DIRECTION_REVERSE:
                 points = points[::-1]
@@ -1108,12 +1115,13 @@ class ChainDB(object):
         return points_data_list
 
     def to_wkb(self, key):
+        """ Get the wkb (binary string) for a given key
+        :param key: geometry identifier
+        :return: wkb (binary string)
+        """
         # generate wkb for all geometries
         i = self.keys[key]
         geom = self._build_geometry(i)
         if geom is None:
             return None
         return geom.ExportToWkb(1)
-
-    def get_chains(self):
-        return "TODO"

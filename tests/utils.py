@@ -67,7 +67,11 @@ class TestCaseGeometry(unittest.TestCase):
             return wkb_simp
 
     def assertValidGeometry(self, wkb):
-        """ Asserts that the goemetry wkb (bin) is valid. """
+        """ Asserts that the goemetry wkb (bin) is valid.
+
+        Examples of not valid:
+        - Polygon is not valid if it has self-intersections
+        """
         g = shapely.wkb.loads(wkb)
         if g.is_valid:
             return
