@@ -7,6 +7,13 @@ import math
 
 
 def boxid_raytrace(pab, k):
+    """ "Raytrace" a line pab into a bitmap grid of size k. Returns all bitmap (x, y) positions where the line pass.
+    
+    Actually, it's the Supercover DDA Algorithm
+
+     Ported from http://stackoverflow.com/questions/18881456/supercover-dda-algorithm
+     which is based on http://lodev.org/cgtutor/raycasting.html
+    """
     if pab[0] < pab[1]:
         (x0, y0), (x1, y1) = pab
     else:
