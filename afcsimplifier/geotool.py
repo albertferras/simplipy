@@ -317,4 +317,22 @@ def count_line_chain_crossings(line, chain):
     return n
 
 
+def same_segment(line1, line2):
+    p1, q1 = line1
+    p2, q2 = line2
+    return ((p1 == q1) and (p2 == q2)) or ((p1 == q2) and (p2 == q1))
 
+
+def similar_segment(line1, line2, k=0.001):
+    p1, q1 = line1
+    p2, q2 = line2
+
+    for a1, a2 in ((p1, q1), (q1, p1)):
+        if distance(a1, p2) < k and distance(a2, q2) < k:
+            return True
+    return False
+
+
+def segment_to_wkt(line):
+    p, q = line
+    return "LINESTRING ({} {}, {} {})".format(*(p + q))

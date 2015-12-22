@@ -8,6 +8,7 @@ from util import P_REMOVED, P_COORD, to_points_data, DIRECTION_NORMAL, DIRECTION
 from visvalingam import visvalingam
 from douglaspeucker import douglaspeucker
 
+import itertools
 #import operator
 import tools
 import copy
@@ -66,13 +67,22 @@ class ChainsSegment(object):
             if chain is None:
                 continue
             points = chain[ChainDB.CHAIN_POINTS]
+            first = None
             last = None
+            is_closed = points[0][P_COORD] == points[-1][P_COORD]
             for (i, p) in enumerate(points):
                 if p[P_REMOVED] is True:
                     continue
-                if last is not None:
+                if last is None:
+                    first = i
+                else:
                     self.new_segment(c, last, i)
                 last = i
+            if is_closed and (points[0][P_REMOVED] or points[-1][P_REMOVED]):
+                # closed chain but first or last point was removed, so
+                # we need to add an additional segment to close the chain
+                self.new_segment(c, last, first)
+                pass
 
     def get_segment_coordinates(self, seg_id):
         c = seg_id[self.SEGID_CHAIN]
@@ -114,16 +124,23 @@ class ChainsSegment(object):
         chain_idx = seg_id[self.SEGID_CHAIN]
         (i, j) = seg_id[self.SEGID_POINTS_IDX]
         points = self.get_chain_points(chain_idx)
-        return map(lambda p: p[P_COORD], points[i:j+1])
+        if i < j:
+            points = points[i:j+1]
+        else:
+            points = itertools.chain(points[i:], points[:j+1])
+        result = map(lambda p: p[P_COORD], points)
+        return result
+
 
     def recover_chain_points(self, seg_id, points_idx):
         chain_idx = seg_id[self.SEGID_CHAIN]
         sidx = seg_id[self.SEGID_IDX]
         (i, j) = seg_id[self.SEGID_POINTS_IDX]
         self.segments[sidx] = None  # Mark this segment as deleted
+        chain_num_points = len(self.get_chain_points(chain_idx))
         k = i
         for l in points_idx[1:]:
-            l += i
+            l = (l + i) % chain_num_points
             self.enable_point(chain_idx, l)
             self.new_segment(chain_idx, k, l)
             k = l
@@ -198,7 +215,7 @@ class ChainDB(object):
     # Stores all geometry hierarchy (multipolygon->polygon->linearring->ring...) in a way
     # that we can access all chains in a quick way
 
-    CHAIN_PARENTS = 0 # a chain can have 1 parent or 2 (shared polygons). 1st parent has DIRECTION_NORMAL and 2nd DIRECTION_REVERSE
+    CHAIN_PARENTS = 0  # a chain can have 1 parent or 2 (shared polygons). 1st parent has DIRECTION_NORMAL and 2nd DIRECTION_REVERSE
     CHAIN_POINTS = 1
 
     GEOM_TYPE = 0
@@ -213,14 +230,20 @@ class ChainDB(object):
         self.set_constraints()
 
         try:
-            self.max_iter = 500 if len(sys.argv) <= 1 else int(sys.argv[1])
-            self.max_fixes = 50000 if len(sys.argv) <= 2 else int(sys.argv[2])
+            self.max_iter = 5000 if len(sys.argv) <= 1 else int(sys.argv[1])
+            self.max_fixes = 5000000 if len(sys.argv) <= 2 else int(sys.argv[2])
         except:
-            self.max_iter = 500
-            self.max_fixes = 50000
+            self.max_iter = 5000
+            self.max_fixes = 5000000
+        self.DEBUG = False
+
+    def set_debug(self):
+        self.DEBUG = True
 
     def set_starting_points(self, mode):
-        if mode not in [ChainDB.STARTING_POINT_FIRSTANDLAST, ChainDB.STARTING_POINT_FIRSTANDFURTHEST, ChainDB.STARTING_POINT_DIAMETERPOINTS]:
+        if mode not in [ChainDB.STARTING_POINT_FIRSTANDLAST,
+                        ChainDB.STARTING_POINT_FIRSTANDFURTHEST,
+                        ChainDB.STARTING_POINT_DIAMETERPOINTS]:
             raise Exception("Invalid starting points mode '%s'" % mode)
         self.starting_points = mode
 
@@ -256,8 +279,12 @@ class ChainDB(object):
         if self.constraint_use_topology:
             self.infer_topology()
 
-        # self.print_geoms()
-        # self.print_chains()
+        self.printchains = False
+        if self.DEBUG:
+            self.printchains = True and 0
+        if self.printchains:
+            self.print_geoms()
+            self.print_chains(True)
 
         if push_progress:
             push_progress('Start')
@@ -272,8 +299,7 @@ class ChainDB(object):
                     points = chain[self.CHAIN_POINTS]
                     if (self.constraint_use_topology is False
                         or (self.constraint_shared_edges and len(chain[self.CHAIN_PARENTS]) > 1)
-                        or (self.constraint_non_shared_edges and len(chain[self.CHAIN_PARENTS]) == 1)
-                    ):
+                        or (self.constraint_non_shared_edges and len(chain[self.CHAIN_PARENTS]) == 1)):
                         simplifier(points, **kwargs)
 
         # 1.a - linearrings must have 4 points atleast (3 distinct)
@@ -291,14 +317,10 @@ class ChainDB(object):
         last_modified_by = None
         iteration = 0
         while modified:
+            if self.printchains:
+                self.print_chains(True)
             iteration += 1
             modified = False
-            # Expand Contract constraint
-            modifier = 1
-            if modifier != last_modified_by and self.constraint_expandcontract is not None:
-                if self.apply_expandcontract(self.constraint_expandcontract, keys_found):
-                    modified = True
-                    last_modified_by = modifier
 
             # Repair Intersections
             modifier = 2
@@ -307,11 +329,26 @@ class ChainDB(object):
                     push_progress('Repairing intersections... Iteration %s' % iteration,
                                   "Repairing intersections... (Please wait)")
                 if self.repair_intersections(**kwargs):
+                    if self.DEBUG:
+                        print "REPAIRED INTERSECTIONS"
                     modified = True
                     last_modified_by = modifier
+                    continue
+
+            # Expand Contract constraint
+            modifier = 1
+            if modifier != last_modified_by and self.constraint_expandcontract is not None:
+                if self.apply_expandcontract(self.constraint_expandcontract, keys_found):
+                    if self.DEBUG:
+                        print "FIXED EXPANDCONTRACT"
+                    modified = True
+                    last_modified_by = modifier
+                    continue
 
         if push_progress:
             push_progress('Done!', "Success!")
+        if self.printchains:
+                self.print_chains(True)
 
     def chain_shares_edges(self, chain_idx):
         chain = self.chains[chain_idx]
@@ -327,14 +364,35 @@ class ChainDB(object):
             if chain is None:
                 continue
 
-    def print_chains(self):
+    def print_chains(self, show_points=False):
         print "chains:"
         for (c, chain) in enumerate(self.chains):
             if chain is None:
                 print c, "->", "DELETED"
             else:
                 points = chain[self.CHAIN_POINTS]
-                print c,"->", chain[self.CHAIN_PARENTS],":", id(points), len(points),"points"
+                is_closed = points[0][P_COORD] == points[-1][P_COORD]
+                msg = "(closed)" if is_closed else ""
+                print c, "->", chain[self.CHAIN_PARENTS], ":", id(points), len(points), "points", msg
+                if show_points:
+                    tab = "              "
+                    i = 0
+                    n = len(points)
+                    while i < n:
+                        start = i
+                        while i < n and points[i][P_REMOVED]:
+                            i += 1
+                        if i - start > 0:
+                            print tab, "     (REMOVED x{})".format(i - start)
+                            # txt = "(DELETED)"
+                            # pa = points[start][P_COORD]
+                            # pb = points[i-1][P_COORD]
+                            # print tab, "{:<10}[{:>3}:{:>3}] {}, {} -> {}, {}".format(txt, start, i, *(pa+pb))
+                        while i < n and not points[i][P_REMOVED]:
+                            p = points[i][P_COORD]
+                            txt = "[q {}]".format(len(points) - i - 1)
+                            print tab, "{:<10}[{:>3}] {}, {}".format(txt, i, *p)
+                            i += 1
 
     def infer_topology(self):
         debug = False
@@ -405,7 +463,7 @@ class ChainDB(object):
             if chain_idx2 is None:
                 direction = DIRECTION_REVERSE
                 chain_idx2 = _get_j2j_chain(key2, key1, chain_points[::-1])
-            return (direction, chain_idx2)
+            return direction, chain_idx2
 
         disable_chains = set()
         for geom in self.geometries:
@@ -515,12 +573,11 @@ class ChainDB(object):
         return False
 
     def apply_expandcontract(self, mode, keys):
-        # mode = 'Expand'
-        # mode = 'Contract'
+        # Find side (-1 or 1, result of ccw_norm)
         if mode == 'Expand':
-            side = 1
+            expand = True
         elif mode == "Contract":
-            side = -1
+            expand = False
         else:
             raise Exception("Invalid expandcontract mode: %s" % mode)
 
@@ -531,9 +588,15 @@ class ChainDB(object):
                 chain = self.chains[chain_id]
                 if chain is not None:
                     points = chain[self.CHAIN_POINTS]
-                    if is_reversed: # if chain is shared between 2 polygons:
+                    if is_reversed:  # if chain is shared between 2 polygons:
                         points = points[::-1]
-                    modified |= self._apply_expandcontract_chain(points, side)
+
+                    try:
+                        while self._apply_expandcontract_chain(points, expand):
+                            modified = True
+                    except NotImplementedError:
+                        print "Failed processing geom_idx={}, chain_idx={}".format(geom_idx, chain_id)
+                        raise
         return modified
 
     def _get_simplified_segments(self, points):
@@ -544,41 +607,74 @@ class ChainDB(object):
                     yield (a, b)
                 a = b
 
-    def _apply_expandcontract_chain(self, points, side):
+    def _apply_expandcontract_chain(self, points, expand):
+        """ Checks that every segment (result of simplification) makes the geometry expand or contract.
+        :param points: List of points
+        :param expand: If true, expand. If false, contract
+        :return: True if any point was removed or recovered
+        """
         modified = False
+        side = -1 if expand else 1
+        is_closed = points[0][P_COORD] == points[-1][P_COORD]
         for (a, b) in self._get_simplified_segments(points):
-            p0 = points[a][P_COORD]
-            pn = points[b][P_COORD]
+            if a > b:
+                raise NotImplementedError("TODO: walk points on chain end (a={}, b={})".format(a, b))
+            pa = points[a][P_COORD]
+            pb = points[b][P_COORD]
             do_convex_hull = False
             for k in xrange(a+1, b):
                 p = points[k]
-                turn = geotool.ccw(p0, pn, p[P_COORD])
+                turn = geotool.ccw(pa, pb, p[P_COORD])
                 # If removing this point made the polygon to expand/contract:
-                if ((turn > 0 and side == 1) # left turn and expand
-                    or (turn < 0 and side == -1)): # right turn and contract
+                # When expanding, every point in the original chain p0..pn must lay on the left side of segment p0,pn
+                # When contracting, on the right side.
+                if (turn < 0 and expand) or (turn > 0 and not expand):
+                    # Expand/Contract violation.
                     do_convex_hull = True
                     break
+
+            # If contract, check case in which polygon goes inside out
+            if not expand and not do_convex_hull:
+                n = len(points)
+                if not is_closed:
+                    if b + 1 == n:
+                        raise NotImplementedError("has to retrieve point from next chain")
+                    if a == 0:
+                        raise NotImplementedError("has to retrieve point from previous chain")
+
+                pb_prev = points[b-1 if b > 0 else n-2][P_COORD]
+                pb_next = points[b+1 if b+1 < n else 1][P_COORD]
+                pa_prev = points[a-1 if a > 0 else n-2][P_COORD]
+                pa_next = points[a+1 if a+1 < n else 1][P_COORD]
+                t1 = (geotool.ccw(pb, pa, pa_prev) > 0) and (geotool.ccw(pa_next, pa, pa_prev) < 0)
+                t2 = (geotool.ccw(pa, pb, pb_next) < 0) and (geotool.ccw(pb_prev, pb, pb_next) < 0)
+                if t1 or t2:
+                    do_convex_hull = True
+
             if do_convex_hull:
                 # recover points
                 L = [a, a+1]
                 for k in xrange(a+2, b+1):
                     L.append(k)
                     while len(L) > 2 and geotool.ccw_norm(points[L[-3]][P_COORD],
-                                                          points[L[-2]][P_COORD], points[L[-1]][P_COORD]) == side:
+                                                          points[L[-2]][P_COORD],
+                                                          points[L[-1]][P_COORD]) == side:
                         L.pop(len(L)-2)
                 for k in L:
                     if points[k][P_REMOVED]:
                         modified = True
                     points[k][P_REMOVED] = False
-
         return modified
 
     def repair_intersections(self, **kwargs):
+        print "_---- REPAIRING"
         repaired = False
         tstart = time.time()
         cs = ChainsSegment(self.geometries, self.chains)
-        print "ChainsSegment build time = %.2f" % (time.time() - tstart)
-        print "ChainsSegment total segments = %s" % len(cs.segments)
+        if self.DEBUG:
+            print ":::::"
+            print "ChainsSegment build time = %.2f" % (time.time() - tstart)
+            print "ChainsSegment total segments = %s" % len(cs.segments)
 
         iter_k = 0
         iterations = 0
@@ -586,9 +682,12 @@ class ChainDB(object):
         epsilon = kwargs.get('epsilon', 0.01)
         while iterations <= self.max_iter and iter_k < len(cs.segments):
             t = time.time()
-            print "Iteration %s" % iterations
+            if self.DEBUG:
+                print ""
+                print "Iteration %s" % iterations
 
             debug = (iterations == self.max_iter)
+            # debug = True
 
             iter_k_next = len(cs.segments)
 
@@ -598,8 +697,11 @@ class ChainDB(object):
             iter_k = iter_k_next
             iterations += 1
 
-            print "iteration time = %.2f" % (time.time() - t)
-        print "Total time = %.2f" % (time.time() - tstart)
+            if self.DEBUG:
+                print "iteration time = %.2f" % (time.time() - t)
+        if self.DEBUG:
+            print "Total time = %.2f" % (time.time() - tstart)
+        print "_---- REPAIRED=", repaired
         return repaired
 
     def _repair_intersections(self, cs, iter_k, epsilon, debug=False):
@@ -618,9 +720,11 @@ class ChainDB(object):
             if s1 is None:  # original or fixed segments doesn't have to be checked
                 continue
             seg_id = s1[ChainsSegment.SEGMENT_SEGID]
+            # print ">>> check intersections", seg_id
             #if is_original_segment(seg_id):
             #    continue
             line1 = cs.get_segment_coordinates(seg_id)
+
             for seg_id2 in cs.G.hit(line1):
                 if seg_id == seg_id2:
                     continue
@@ -648,10 +752,13 @@ class ChainDB(object):
                         intersections.append((seg_id, seg_id2))
         if debug:
             print "Find intersections time = %.2f" % (time.time() - t)
-        print len(intersections), "intersections found"
+        if self.DEBUG:
+            print len(intersections), "intersections found"
 
         # apply SD heuristic
         for (segA_id, segB_id) in intersections:
+            if debug:
+                print "fix int:", segA_id, segB_id
             sa = cs.segments[segA_id[0]]
             sb = cs.segments[segB_id[0]]
 
@@ -682,6 +789,8 @@ class ChainDB(object):
                 C, Cp, s, sp, lineS, lineSP = Cb, Ca, sb, sa, lineB, lineA
 
             if crossings_a == crossings_b == 0:
+                if debug:
+                    print "no crossings?!"
                 continue
 
             # This check is to avoid infinite loops
@@ -722,10 +831,12 @@ class ChainDB(object):
                 shortest_path = None
 
             if shortest_path is not None:
+                if debug:
+                    print "Fix SGD %s %s" % (sa[ChainsSegment.SEGMENT_SEGID],
+                                             sb[ChainsSegment.SEGMENT_SEGID])
+                    print "shortest path:", shortest_path
                 cs.recover_chain_points(s[ChainsSegment.SEGMENT_SEGID], shortest_path)
                 repaired = True
-                if debug:
-                    print "Fix SGD %s %s" % (sa, sb)
             else:
                 if debug:
                     print "Fix Rand %s %s" % (sa, sb)
@@ -768,7 +879,7 @@ class ChainDB(object):
         else:
             item = [None, parent, None]
 
-        i = len(self.geometries) # index of 'this geometry' (parent for children)
+        i = len(self.geometries)  # index of 'this geometry' (parent for children)
         self.geometries.append(item)
 
         if geometry is None:
@@ -803,8 +914,11 @@ class ChainDB(object):
         return i
 
     def linearring_to_point_list(self, geometry, is_exterior=True):
+        # Exterior LinearRing points orientation must be counterclockwise
+        # Interior LinearRing points orientation must be clockwise
         point_list = list(geometry.coords)
-        if geometry.is_ccw == is_exterior:
+        if geometry.is_ccw != is_exterior:
+            # if clockwise and exterior or counterclockwise and interior -> reverse points (as they should)
             point_list = point_list[::-1]
         return point_list
 
@@ -814,16 +928,16 @@ class ChainDB(object):
         # output:
         # p1..p4, p4..p15, p15..p20
         # Choose starting points (check parameters)
-        if self.starting_points  == ChainDB.STARTING_POINT_FIRSTANDLAST:
+        if self.starting_points == ChainDB.STARTING_POINT_FIRSTANDLAST:
             i = len(point_list)-2
             yield point_list[:i+1]
             yield point_list[i:]
-        elif self.starting_points  == ChainDB.STARTING_POINT_FIRSTANDFURTHEST:
+        elif self.starting_points == ChainDB.STARTING_POINT_FIRSTANDFURTHEST:
             p = point_list[0]
             (qdist, i) = geotool.get_furthest_point(p, point_list)
             yield point_list[:i+1]
             yield point_list[i:]
-        elif self.starting_points  == ChainDB.STARTING_POINT_DIAMETERPOINTS:
+        elif self.starting_points == ChainDB.STARTING_POINT_DIAMETERPOINTS:
             (p, q) = geotool.diameter(point_list)
             i = point_list.index(p)
             j = point_list.index(q)
@@ -1007,7 +1121,7 @@ class ChainDB(object):
                 subgeom = self._build_geometry(j)
                 if subgeom is not None:
                     geom.AddGeometry(subgeom)
-                elif i == 0: # If exterior is invalid, return nothing
+                elif i == 0:  # If exterior is invalid, return nothing
                     return None
         elif gtype == "LinearRing":
             geom = ogr.Geometry(ogr.wkbLinearRing)

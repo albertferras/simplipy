@@ -8,7 +8,7 @@ import shapely.wkt
 import shapely.wkb
 import shapely.validation
 import ogr
-
+import os
 
 def load_wkt(path):
     with open(path, 'r') as f:
@@ -49,12 +49,11 @@ class TestCaseGeometry(unittest.TestCase):
         :return: Yields a tuple (identifier, simplified wkb) for every identifier in geom_wkb_dict.
         """
         cdb = ChainDB()
+        cdb.set_debug()
         for key, wkb in geom_wkb_dict.iteritems():
             cdb.add_geometry(key, wkb)
         cdb.set_constraints(**constraints)
-        print "simplify all"
         cdb.simplify_all(simplifier=simplifier, **simplifier_params)
-        print "simplified"
         for key in geom_wkb_dict.iterkeys():
             yield key, cdb.to_wkb(key)
 
@@ -98,3 +97,32 @@ class TestCaseGeometry(unittest.TestCase):
         if not g.is_simple:
             return
         raise self.failureException("Geometry is simple")
+
+    def save_shapefile(self, path, name, geom_wkb_dict, gtype=ogr.wkbMultiPolygon):
+        """ Save a collection of geometries to a shapefile in [path].
+        :param geom_wkb_dict: dict (key, value) = (identifier, wkb (binary string))"""
+        os.popen("mkdir -p {}".format(path))
+
+        # Now convert it to a shapefile with OGR
+        driver = ogr.GetDriverByName('Esri Shapefile')
+        ds = driver.CreateDataSource(os.path.join(path, '{}.shp'.format(name)))
+        layer = ds.CreateLayer('', None, gtype)
+
+        # Add one attribute
+        layer.CreateField(ogr.FieldDefn('id', ogr.OFTInteger))
+        defn = layer.GetLayerDefn()
+
+        for key, wkb in geom_wkb_dict.iteritems():
+            # Create a new feature (attribute and geometry)
+            feat = ogr.Feature(defn)
+            feat.SetField('id', 123)
+
+            # Make a geometry, from Shapely object
+            geom = ogr.CreateGeometryFromWkb(wkb)
+            feat.SetGeometry(geom)
+
+            layer.CreateFeature(feat)
+            feat = geom = None  # destroy these
+
+        # Save and close everything
+        ds = layer = feat = geom = None
