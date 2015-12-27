@@ -1,9 +1,17 @@
 #!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
 
+import math
 import unittest
 import random
-from afcsimplifier.grid import Grid, raytrace, boxid_raytrace
+from afcsimplifier.grid import Grid, boxid_raytrace
+
+# Pairs of segment that intersect
+PAIR_SEGMENT_INT = [[((-74.394520637, -51.122247003), (-74.495432095, -51.049248956)),
+                     ((-74.473459439, -51.069105727), (-74.460275845, -51.062107029))],
+                    [((107.0098, 10.5390), (106.9978, 10.5491)),
+                     ((106.9978, 10.6249), (107.0114, 10.5219))],
+                    ]
 
 
 class TestGrid(unittest.TestCase):
@@ -21,7 +29,7 @@ class TestGrid(unittest.TestCase):
         print "Grid width=", grid.K
         all_keys = set()
         for boxid, keys in sorted(grid.boxes.iteritems()):
-            print boxid, "==", keys
+            # print boxid, "==", keys
             all_keys.update(keys)
 
         if box_ascii:
@@ -44,24 +52,6 @@ class TestGrid(unittest.TestCase):
                     print ''.join(line)
 
     def test_raytrace(self):
-        for line in (((107.0098, 10.5390), (106.9978, 10.5491)),
-                     ((106.9978, 10.6249), (107.0114, 10.5219))):
-            for grid_size in [0.015]:
-                p, q = line
-                ax = int(p[0]/grid_size)
-                ay = int(p[1]/grid_size)
-                bx = int(q[0]/grid_size)
-                by = int(q[1]/grid_size)
-
-                boxids1 = list(raytrace(ax, ay, bx, by))
-                boxids2 = list(raytrace(bx, by, ax, ay))
-                print "----"
-                print line, ax, ay, bx, by
-                print boxids1
-                print list(reversed(boxids2))
-                self.assertEquals(sorted(boxids1), sorted(boxids2))
-
-    def test_raytrace2(self):
         for grid_size in [0.015, 0.02, 0.1]:
             cases = [((106.9978, 10.6249), (107.0114, 10.5219)),
                      ((107.0098, 10.5390), (106.9978, 10.5491))]
@@ -122,19 +112,19 @@ class TestGrid(unittest.TestCase):
                 self.assertTrue(len(boxids) == (n * 2 - 1))
 
     def test_hit(self):
-        line1 = ((107.0098, 10.5390), (106.9978, 10.5491))
-        line2 = ((106.9978, 10.6249), (107.0114, 10.5219))
-        for grid in self._gen_grid_combinations(line1, line2):
-            try:
-                self.assertIn(2, grid.hit(line1))
-                self.assertIn(1, grid.hit(line2))
-            except AssertionError:
-                print "Failed on grid"
-                self._print_grid(grid, box_ascii=True)
-                print 1, list(grid._box_ids(line1))
-                print 2, list(grid._box_ids(line2))
-                raise
-
+        for line1, line2 in PAIR_SEGMENT_INT:
+            for grid in self._gen_grid_combinations(line1, line2):
+                try:
+                    self.assertIn(2, grid.hit(line1))
+                    self.assertIn(1, grid.hit(line2))
+                except AssertionError:
+                    print "Failed on grid. Expected intersection between"
+                    print "segment 1:", line1
+                    print "segment 2:", line2
+                    self._print_grid(grid, box_ascii=True)
+                    print 1, list(grid._box_ids(line1))
+                    print 2, list(grid._box_ids(line2))
+                    raise
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import geotool
 from util import P_REMOVED, P_COORD, to_points_data, DIRECTION_NORMAL, DIRECTION_REVERSE
 from visvalingam import visvalingam
 from douglaspeucker import douglaspeucker
+import expandcontract
 
 import itertools
 #import operator
@@ -41,11 +42,18 @@ except:
 
 from collections import Counter
 
+
+class DataInconsistency(Exception):
+    pass
+
+
 def list_difference(l1, l2):
     c1 = Counter(l1)
     c2 = Counter(l2)
     diff = c1 - c2
     return list(diff.elements())
+
+is_closed_chain = lambda points: points[0][P_COORD] == points[-1][P_COORD]
 
 
 class ChainsSegment(object):
@@ -55,6 +63,7 @@ class ChainsSegment(object):
 
     SEGMENT_SEGID = 0
     SEGMENT_COORDS = 1
+
     def __init__(self, geometries, chains):
         self.geometries = geometries
         self.segments = []
@@ -69,7 +78,7 @@ class ChainsSegment(object):
             points = chain[ChainDB.CHAIN_POINTS]
             first = None
             last = None
-            is_closed = points[0][P_COORD] == points[-1][P_COORD]
+            is_closed = is_closed_chain(points)
             for (i, p) in enumerate(points):
                 if p[P_REMOVED] is True:
                     continue
@@ -131,7 +140,6 @@ class ChainsSegment(object):
         result = map(lambda p: p[P_COORD], points)
         return result
 
-
     def recover_chain_points(self, seg_id, points_idx):
         chain_idx = seg_id[self.SEGID_CHAIN]
         sidx = seg_id[self.SEGID_IDX]
@@ -155,17 +163,6 @@ class ChainsSegment(object):
         parents1 = chain1[ChainDB.CHAIN_PARENTS]
         return c1 == c2 and len(parents1) != 1
 
-        #parents1 = self.get_chain_parent(c1)
-        #parents2 = self.get_chain_parent(c2)
-        #
-        #shared_parent = set(parents1) & set(parents2)
-        #if len(shared_parent) > 0:
-        #    return False
-        #
-        #if parents1 == parents2:
-        #    return False
-        #return self.chains[c1][ChainDB.CHAIN_POINTS] is self.chains[c2][ChainDB.CHAIN_POINTS]
-
     def is_deleted_segment(self, seg_id):
         return self.segments[seg_id[self.SEGID_IDX]] is None
 
@@ -181,10 +178,13 @@ class ChainsSegment(object):
 
 
 
-point_key = lambda p: ("%.5f;%.5f" % p[P_COORD]) # use this to snap points that are almost identical
-coord_key = lambda coord: ("%.5f;%.5f" % coord) # should be the same as point_key! (not merging them due to performance)
-point_key2 = lambda p, K: (int(p[P_COORD][0]/K)*K, int(p[P_COORD][1]/K)*K)
-coord_key2 = lambda coord, K: (int(coord[0]/K)*K, int(coord[1]/K)*K)
+# point_key: use this to snap points that are almost identical
+point_key = lambda p: ("%.5f;%.5f" % p[P_COORD])
+# coord_key: should be the same as point_key! (not merging them due to performance)
+coord_key = lambda coord: ("%.5f;%.5f" % coord)
+point_key2 = lambda p, k: (int(p[P_COORD][0]/k)*k, int(p[P_COORD][1]/k)*k)
+coord_key2 = lambda coord, k: (int(coord[0]/k)*k, int(coord[1]/k)*k)
+
 
 class JunctionPoints(object):
     def __init__(self):
@@ -215,7 +215,7 @@ class ChainDB(object):
     # Stores all geometry hierarchy (multipolygon->polygon->linearring->ring...) in a way
     # that we can access all chains in a quick way
 
-    CHAIN_PARENTS = 0  # a chain can have 1 parent or 2 (shared polygons). 1st parent has DIRECTION_NORMAL and 2nd DIRECTION_REVERSE
+    CHAIN_PARENTS = 0  # a chain can have 1 or 2 parents (shared polygons). 1st parent has DIRECTION_NORMAL and 2nd DIRECTION_REVERSE
     CHAIN_POINTS = 1
 
     GEOM_TYPE = 0
@@ -290,6 +290,20 @@ class ChainDB(object):
             push_progress('Start')
         # 1 - simplify
         keys_found = []
+
+        skip_shared_chains = False
+        skip_non_shared_chains = False
+        if self.constraint_use_topology:
+            skip_shared_chains = not self.constraint_shared_edges
+            skip_non_shared_chains = not self.constraint_non_shared_edges
+            if self.constraint_expandcontract is not None:
+                # A shared chain can never be simplified by expansion or contraction
+                skip_shared_chains = True
+            if self.constraint_repair_intersections:
+                # A shared chain simplification will always be repaired because they always will have intersections
+                # with other geometries
+                skip_shared_chains = True
+
         for key in keys:
             keys_found.append(key)
             geom_idx = self.keys[key]
@@ -297,10 +311,15 @@ class ChainDB(object):
                 chain = self.chains[chain_id]
                 if chain is not None:
                     points = chain[self.CHAIN_POINTS]
-                    if (self.constraint_use_topology is False
-                        or (self.constraint_shared_edges and len(chain[self.CHAIN_PARENTS]) > 1)
-                        or (self.constraint_non_shared_edges and len(chain[self.CHAIN_PARENTS]) == 1)):
-                        simplifier(points, **kwargs)
+
+                    is_shared_chain = len(chain[self.CHAIN_PARENTS]) > 1
+                    if (is_shared_chain and skip_shared_chains) or (not is_shared_chain and skip_non_shared_chains):
+                        continue
+
+                    # if (self.constraint_use_topology is False
+                    #     or (self.constraint_shared_edges and len(chain[self.CHAIN_PARENTS]) > 1)
+                    #     or (self.constraint_non_shared_edges and len(chain[self.CHAIN_PARENTS]) == 1)):
+                    simplifier(points, **kwargs)
 
         # 1.a - linearrings must have 4 points atleast (3 distinct)
         #     - linestring must have 2 distinct points atleast
@@ -317,6 +336,8 @@ class ChainDB(object):
         last_modified_by = None
         iteration = 0
         while modified:
+            if self.DEBUG:
+                print "\n\n=====CONSTRAINT ITERATION ", iteration, "===="
             if self.printchains:
                 self.print_chains(True)
             iteration += 1
@@ -347,6 +368,8 @@ class ChainDB(object):
 
         if push_progress:
             push_progress('Done!', "Success!")
+        if self.DEBUG:
+            print "DONE"
         if self.printchains:
                 self.print_chains(True)
 
@@ -371,7 +394,7 @@ class ChainDB(object):
                 print c, "->", "DELETED"
             else:
                 points = chain[self.CHAIN_POINTS]
-                is_closed = points[0][P_COORD] == points[-1][P_COORD]
+                is_closed = is_closed_chain(points)
                 msg = "(closed)" if is_closed else ""
                 print c, "->", chain[self.CHAIN_PARENTS], ":", id(points), len(points), "points", msg
                 if show_points:
@@ -404,7 +427,7 @@ class ChainDB(object):
         # Identify junctions between chains
         # http://bost.ocks.org/mike/topology/ (Step 2.Join)
         # 1 - Map points
-        point_map = {} # may crash memory
+        point_map = {}  # may crash memory
         for (c, chain) in enumerate(self.chains):
             for point in chain[self.CHAIN_POINTS]:
                 key = point_key2(point, K)
@@ -573,6 +596,14 @@ class ChainDB(object):
         return False
 
     def apply_expandcontract(self, mode, keys):
+        """ Apply expand contract constraint to geometries in this ChainDB
+
+        Works only for LinearRings (atleast 3 segments)
+
+        :param mode: 'Expand' or 'Contract'
+        :param keys: List of geometry keys to be applied
+        :return:
+        """
         # Find side (-1 or 1, result of ccw_norm)
         if mode == 'Expand':
             expand = True
@@ -581,98 +612,124 @@ class ChainDB(object):
         else:
             raise Exception("Invalid expandcontract mode: %s" % mode)
 
-        modified = False
+        any_modified = False
         for key in keys:
             geom_idx = self.keys[key]
-            for (chain_id, is_reversed) in self.get_chains_by_geom2(geom_idx):
-                chain = self.chains[chain_id]
-                if chain is not None:
-                    points = chain[self.CHAIN_POINTS]
-                    if is_reversed:  # if chain is shared between 2 polygons:
-                        points = points[::-1]
+            for part_geom_idx in self.find_parts_with_chains(geom_idx):
+                modified = True
+                while modified:
+                    modified = False
+                    # print "====" * 10
+                    # print "GeomIDX=", part_geom_idx
+                    # print "Segments:"
+                    # for segment in self.get_simplified_segments(part_geom_idx):
+                    #     print segment[0][P_COORD], segment[-1][P_COORD]
+                    segments = self.get_simplified_segments(part_geom_idx)
+                    sfirst = sa = segments.next()
+                    ssecond = sb = segments.next()
+                    for sc in segments:
+                        if not expandcontract.is_valid(sb, previous_segment=sa, next_segment=sc, expand=expand):
+                            modified |= expandcontract.fix(sb, expand=expand)
+                        sa, sb = sb, sc
+                    if not expandcontract.is_valid(sb, previous_segment=sa, next_segment=sfirst, expand=expand):
+                        modified |= expandcontract.fix(sb, expand=expand)
+                    if not expandcontract.is_valid(sfirst, previous_segment=sb, next_segment=ssecond, expand=expand):
+                        modified |= expandcontract.fix(sfirst, expand=expand)
+                    any_modified |= modified
+        return any_modified
 
-                    try:
-                        while self._apply_expandcontract_chain(points, expand):
-                            modified = True
-                    except NotImplementedError:
-                        print "Failed processing geom_idx={}, chain_idx={}".format(geom_idx, chain_id)
-                        raise
-        return modified
+    def iter_chain_points(self, geom_idx):
+        """ Iterate every point of chains a geom_idx in the correct order.
 
-    def _get_simplified_segments(self, points):
-        a = 0
-        for b in xrange(1, len(points)):
-            if points[b][P_REMOVED] is False:
-                if b-a > 1:
-                    yield (a, b)
-                a = b
-
-    def _apply_expandcontract_chain(self, points, expand):
-        """ Checks that every segment (result of simplification) makes the geometry expand or contract.
-        :param points: List of points
-        :param expand: If true, expand. If false, contract
-        :return: True if any point was removed or recovered
+        Does not return consecutive identical points unless they're the first and last one of the full list of points.
         """
-        modified = False
-        side = -1 if expand else 1
-        is_closed = points[0][P_COORD] == points[-1][P_COORD]
-        for (a, b) in self._get_simplified_segments(points):
-            if a > b:
-                raise NotImplementedError("TODO: walk points on chain end (a={}, b={})".format(a, b))
-            pa = points[a][P_COORD]
-            pb = points[b][P_COORD]
-            do_convex_hull = False
-            for k in xrange(a+1, b):
-                p = points[k]
-                turn = geotool.ccw(pa, pb, p[P_COORD])
-                # If removing this point made the polygon to expand/contract:
-                # When expanding, every point in the original chain p0..pn must lay on the left side of segment p0,pn
-                # When contracting, on the right side.
-                if (turn < 0 and expand) or (turn > 0 and not expand):
-                    # Expand/Contract violation.
-                    do_convex_hull = True
+        geom = self.geometries[geom_idx]
+        chain_ids = geom[self.GEOM_CHILDREN]
+
+        last_p = None
+        for chain_id in chain_ids:
+            chain = self.chains[chain_id]
+            points = chain[self.CHAIN_POINTS]
+
+            # If chain is stored in reverse order (multiple parents, shared edges)
+            parents = chain[self.CHAIN_PARENTS]
+            if len(parents) == 2 and parents[1] == geom_idx:
+                points = reversed(points)
+            else:
+                points = iter(points)
+
+            # Yield first point only if it's different from the previous chain
+            p = points.next()
+            if last_p != p:
+                yield p
+
+            for p in points:
+                yield p
+            last_p = p
+
+    def get_simplified_segments(self, geom_idx):
+        points_iter = self.iter_chain_points(geom_idx)
+
+        # Find first non-removed point
+        first_point = points_iter.next()
+        if first_point[P_REMOVED]:
+            p = None
+            first_half_segment = []
+            for p in points_iter:
+                first_half_segment.append(p)
+                if not p[P_REMOVED]:
                     break
+        else:
+            p = first_point
+            first_half_segment = [p]
 
-            # If contract, check case in which polygon goes inside out
-            if not expand and not do_convex_hull:
-                n = len(points)
-                if not is_closed:
-                    if b + 1 == n:
-                        raise NotImplementedError("has to retrieve point from next chain")
-                    if a == 0:
-                        raise NotImplementedError("has to retrieve point from previous chain")
+        # At this point:
+        # p = first non-removed point
+        # first_filtered_points = list of points filtered before point p
+        #                         (will be returned in last segment if points_iter are a closed chain)
+        segment = [p]
+        for p in points_iter:
+            segment.append(p)
+            if not p[P_REMOVED]:
+                yield segment
+                segment = [p]
 
-                pb_prev = points[b-1 if b > 0 else n-2][P_COORD]
-                pb_next = points[b+1 if b+1 < n else 1][P_COORD]
-                pa_prev = points[a-1 if a > 0 else n-2][P_COORD]
-                pa_next = points[a+1 if a+1 < n else 1][P_COORD]
-                t1 = (geotool.ccw(pb, pa, pa_prev) > 0) and (geotool.ccw(pa_next, pa, pa_prev) < 0)
-                t2 = (geotool.ccw(pa, pb, pb_next) < 0) and (geotool.ccw(pb_prev, pb, pb_next) < 0)
-                if t1 or t2:
-                    do_convex_hull = True
+        # At this point:
+        # p = last point of all chains points
+        # segment = list of points, starting at last non-removed point.
 
-            if do_convex_hull:
-                # recover points
-                L = [a, a+1]
-                for k in xrange(a+2, b+1):
-                    L.append(k)
-                    while len(L) > 2 and geotool.ccw_norm(points[L[-3]][P_COORD],
-                                                          points[L[-2]][P_COORD],
-                                                          points[L[-1]][P_COORD]) == side:
-                        L.pop(len(L)-2)
-                for k in L:
-                    if points[k][P_REMOVED]:
-                        modified = True
-                    points[k][P_REMOVED] = False
-        return modified
+        # If original chain is closed, must return an additional segment to close the segments returned
+        if first_point[P_COORD] == p[P_COORD] and (len(segment) + len(first_half_segment) > 2):
+            segment += first_half_segment
+            yield segment
+
+    def find_parts_with_chains(self, geom_idx):
+        # TODO: same as _get_line_primitives?!
+        """ Yields all geom_idx's parts (children geom_idx) with chains
+
+        Example:
+        A multipolygon with 3 polygons and 2 rings each, will return one geom_idx for every linearring (total=6)
+        A linearring or linestring will return one geom_idx in total
+
+        :param geom_idx: index in self.geometries
+        :return: list of geom_idx with chains
+        """
+        geom = self.geometries[geom_idx]
+        geom_type = geom[self.GEOM_TYPE]
+        if geom_type is None:
+            return
+        elif geom_type == "LinearRing" or geom_type == "LineString":
+            yield geom_idx
+        else:
+            tmp = (self.find_parts_with_chains(child_geom_idx) for child_geom_idx in geom[self.GEOM_CHILDREN])
+            for geom_idx2 in itertools.chain(*tmp):
+                yield geom_idx2
 
     def repair_intersections(self, **kwargs):
-        print "_---- REPAIRING"
         repaired = False
         tstart = time.time()
         cs = ChainsSegment(self.geometries, self.chains)
         if self.DEBUG:
-            print ":::::"
             print "ChainsSegment build time = %.2f" % (time.time() - tstart)
             print "ChainsSegment total segments = %s" % len(cs.segments)
 
@@ -681,13 +738,11 @@ class ChainDB(object):
 
         epsilon = kwargs.get('epsilon', 0.01)
         while iterations <= self.max_iter and iter_k < len(cs.segments):
-            t = time.time()
-            if self.DEBUG:
-                print ""
-                print "Iteration %s" % iterations
-
             debug = (iterations == self.max_iter)
-            # debug = True
+            #debug = True
+            if debug:
+                t = time.time()
+                print "Iteration %s" % iterations
 
             iter_k_next = len(cs.segments)
 
@@ -697,11 +752,10 @@ class ChainDB(object):
             iter_k = iter_k_next
             iterations += 1
 
-            if self.DEBUG:
+            if debug:
                 print "iteration time = %.2f" % (time.time() - t)
         if self.DEBUG:
             print "Total time = %.2f" % (time.time() - tstart)
-        print "_---- REPAIRED=", repaired
         return repaired
 
     def _repair_intersections(self, cs, iter_k, epsilon, debug=False):
@@ -725,7 +779,13 @@ class ChainDB(object):
             #    continue
             line1 = cs.get_segment_coordinates(seg_id)
 
+            # dbg = seg_id[ChainsSegment.SEGID_POINTS_IDX] in ((34, 35), (21, 32))
+            # if dbg:
+            #     print "====="
+            #     print seg_id
             for seg_id2 in cs.G.hit(line1):
+                # if dbg:
+                #     print "\t", seg_id2
                 if seg_id == seg_id2:
                     continue
                 if cs.is_consecutive_segments(seg_id, seg_id2):
@@ -752,7 +812,6 @@ class ChainDB(object):
                         intersections.append((seg_id, seg_id2))
         if debug:
             print "Find intersections time = %.2f" % (time.time() - t)
-        if self.DEBUG:
             print len(intersections), "intersections found"
 
         # apply SD heuristic
@@ -1078,25 +1137,6 @@ class ChainDB(object):
             return reduce(lambda a, b: a+b, map(self.get_chains_by_geom, geom[self.GEOM_CHILDREN]))
         else:
             raise NotImplemented("get_chains_by_geom not implemented for {}".format(geom[self.GEOM_TYPE]))
-
-    def get_chains_by_geom2(self, geom_idx):
-        # like get_chains_by_geom, but also returns if chain_id is reversed
-        # (because it's a chain shared between 2 geometries)
-        geom = self.geometries[geom_idx]
-        if geom[self.GEOM_TYPE] is None:
-            return
-        elif geom[self.GEOM_TYPE] == "LinearRing":
-            chain_ids = geom[self.GEOM_CHILDREN]
-            for chain_id in chain_ids:
-                is_reversed = False
-                parents = self.chains[chain_id][self.CHAIN_PARENTS]
-                if len(parents) == 2 and parents[1] == geom_idx:
-                    is_reversed = True
-                yield (chain_id, is_reversed)
-        else:
-            for c in geom[self.GEOM_CHILDREN]:
-                for x in self.get_chains_by_geom2(c):
-                    yield x
 
     def _build_geometry(self, geom_idx):
         (gtype, parent, children) = self.geometries[geom_idx]

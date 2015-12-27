@@ -69,16 +69,17 @@ class TestSimplifier(TestCaseGeometry):
                                            check_valid=False, check_simple=True)
 
     def test_expandcontract(self):
-        geometries = load_shapefile(data_path('naturalearth_nations/ne_10m_admin_0_countries.shp'),
-                                    geom_key='ISO_A2')
-        geometries = {k: v for k, v in geometries.iteritems() if k.split(":")[1] == 'VN'}
-        #poly = load_wkt(data_path('poly2.wkt'))
-        #geometries = {'A': poly.wkb}
+        geometries = load_shapefile(data_path('naturalearth_nations/ne_10m_admin_0_countries.shp'), geom_key='ISO_A2')
+        # geometries = {k: v for k, v in geometries.iteritems() if k.split(":")[1] == 'GR'}
+        # geometries = {fname: load_wkt(data_path(fname)).wkb for fname in ['poly1.wkt', 'poly2.wkt', 'poly3.wkt',
+        #                                                                   'poly4.wkt', 'poly5.wkt']}
+        # geometries = {fname: load_wkt(data_path(fname)).wkb for fname in ['poly5.wkt']}
 
         simplifier = douglaspeucker
         simplifier_params = dict(epsilon=0.1)
         self.save_shapefile(data_path('test'), 'orig', geometries)
         for mode in ["Expand", "Contract"]:
+            print "*"*100, mode
             constraints = dict(expandcontract=mode,
                                # until I find a way to validate the constraint when receiving non-valid or non-simple
                                # polygons, I set these constraints so that I can use
@@ -86,26 +87,33 @@ class TestSimplifier(TestCaseGeometry):
                                prevent_shape_removal=True,
                                repair_intersections=True,
                                # to speedup repair intersections
-                               use_topology=False,  # TODO: Fails with TRUE because multiple chains in linearring
+                               use_topology=True,  # TODO: Fails with TRUE because multiple chains in linearring
                                simplify_shared_edges=True,
                                simplify_non_shared_edges=True,
                                )
             simp_geometries = self._test_geometry_simplification(geometries, simplifier, simplifier_params, constraints,
                                                                  check_valid=False, check_simple=False)
-            self.save_shapefile(data_path('test'), 'simp', simp_geometries)
+            self.save_shapefile(data_path('test'), 'simp{}'.format(mode), simp_geometries)
+            print "Validating geometries..."
             for key, simp_wkb in simp_geometries.iteritems():
-                geom = shapely.wkb.loads(geometries[key])
-                simp_geom = shapely.wkb.loads(simp_wkb)
+                try:
+                    geom = shapely.wkb.loads(geometries[key])
+                    simp_geom = shapely.wkb.loads(simp_wkb)
 
-                intersection = geom.intersection(simp_geom)
-                union = geom.union(simp_geom)
-                if mode == "Expand":
-                    # Nothing from the original geometry is lost
-                    self.assertTrue(geom.equals(intersection))
-                    self.assertTrue(simp_geom.equals(union))
-                if mode == "Contract":
-                    self.assertTrue(simp_geom.equals(intersection))
-                    self.assertTrue(geom.equals(union))
+                    # intersection = geom.intersection(simp_geom)
+                    # union = geom.union(simp_geom)
+                    if mode == "Expand":
+                        # Nothing from the original geometry is lost
+                        diff = geom.difference(simp_geom)
+                        if diff.area > 1e-8:
+                            raise self.failureException("Part of original geometry is lost")
+                    if mode == "Contract":
+                        diff = simp_geom.difference(geom)
+                        if diff.area > 1e-8:
+                            raise self.failureException("Part of simplified geometry is not in the original geometry")
+                except Exception:
+                    print "Failed on geometry id={}".format(key)
+                    raise
 
     def test_repair_intersections(self):
         geometries = load_shapefile(data_path('naturalearth_nations/ne_10m_admin_0_countries.shp'),
