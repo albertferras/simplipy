@@ -436,6 +436,7 @@ class simplipy:
 
     sthread = None
     def start_simplify(self):
+        tstart = time.time()
         self.error = False
         if self.sthread is not None:
             # if thread running, stop it (or try to stop it)
@@ -576,6 +577,11 @@ class simplipy:
 
                     if tag == 'size' and (pcnt and pcnt > 95):
                         self.log("Hint: Not enough simplification? Try modifying the algorithm parameters")
+                total_time = time.time() - tstart
+                if total_time > 10:
+                    self.log("Total time = {} seconds".format(int(total_time)))
+                else:
+                    self.log("Total time = {:.2f} seconds".format(total_time))
 
                 self.sthread = None
 
@@ -614,7 +620,6 @@ class simplipy:
         self.dlg.ui.group_Constraints.setDisabled(not enabled)
         self.dlg.ui.group_Options.setDisabled(not enabled)
 
-
     # run method that performs all the real work
     def run(self):
         # show the dialog
@@ -625,7 +630,7 @@ class simplipy:
         self.log("Simplipy {} Log:".format(version))
 
         self.refresh_input_layer_list()
-        #self.refresh_output_field_list()
+        # self.refresh_output_field_list()
         self.show_alg_parameters(self.get_algorithm_selected())
 
         # Run the dialog event loop
@@ -674,7 +679,6 @@ class SimplifyThread(WorkerThread):
         WorkerThread.stop(self)
 
     def simplifyFeature(self, feature):
-        #Simplify feature
         wkb = feature.geometry().asWkb()
         wkb_simplified = self.simplifier.simplify(wkb)
 
@@ -707,19 +711,14 @@ class SimplifyThread(WorkerThread):
                 last_p = p_int
         self.emit(SIGNAL("progress( PyQt_PyObject )"), 100.0)
 
-
-
     def doWork(self):
         try:
-            i = 0
-            last_p = 0
             self.emit(SIGNAL("progress( PyQt_PyObject )"), 0)
             
             def push_progress(msg, bar_msg=None):
                 self.logger("Progress = %s" % str(msg))
                 if bar_msg:
                     self.emit(SIGNAL("progress( PyQt_PyObject )"), bar_msg)
-
 
             # Fill chain db
             self.logger("fill chain db")
