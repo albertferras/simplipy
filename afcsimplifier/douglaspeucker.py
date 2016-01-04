@@ -1,9 +1,7 @@
-'''
-Created on Sep 6, 2013
+#!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
 
-@author: albert
-'''
-from util import P_REMOVED, P_COORD, to_points_data, DIRECTION_NORMAL, DIRECTION_REVERSE
+from util import P_REMOVED, P_COORD
 import geotool
 
 
@@ -27,7 +25,7 @@ def douglaspeucker_rec(points, i, j, epsilon_squared):
                 dmax = d
         k += 1
     # If distance is higher than epsilon, simplify recursively
-    if (dmax > epsilon_squared):
+    if dmax > epsilon_squared:
         douglaspeucker_rec(points, i, kmax, epsilon_squared)
         douglaspeucker_rec(points, kmax, j, epsilon_squared)
     else:
@@ -35,6 +33,7 @@ def douglaspeucker_rec(points, i, j, epsilon_squared):
         while k < j:
             points[k][P_REMOVED] = True
             k += 1
+
 
 def douglaspeucker(chain, epsilon=0.01):
     douglaspeucker_rec(chain, 0, len(chain)-1, epsilon**2)

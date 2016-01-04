@@ -140,7 +140,7 @@ class simplipy:
 
         # Read metadata.txt
         self.metadata = ConfigParser.ConfigParser()
-        self.metadata.read(os.path.join(os.path.dirname(__file__),'metadata.txt'))
+        self.metadata.read(os.path.join(os.path.dirname(__file__), 'metadata.txt'))
 
     def initGui(self):
         # Create action that will start plugin configuration
@@ -149,7 +149,12 @@ class simplipy:
             u"Advanced geometry simplification", self.iface.mainWindow())
         # connect the action to the run method
         self.action.triggered.connect(self.run)
+
+        self._refreshing_input_layer_list = False
         self.iface.mapCanvas().selectionChanged.connect(self.refresh_feature_count)
+        #self.iface.mapCanvas().layersChanged.connect(self.refresh_input_layer_list)
+        self.layerRegistry.layersAdded.connect(self.refresh_input_layer_list)
+        self.layerRegistry.layersRemoved.connect(self.refresh_input_layer_list)
 
         QObject.connect(self.dlg.ui.inputlayerComboBox, SIGNAL("currentIndexChanged(QString)"), self.inputlayer_changed)
         QObject.connect(self.dlg.ui.features_selected_radio, SIGNAL("currentIndexChanged(QString)"), self.refresh_feature_count)
@@ -173,22 +178,19 @@ class simplipy:
             for param_id, parameter in alg['parameters'].iteritems():
                 parameter['qobj'] = getattr(self.dlg.ui, parameter['QObject'])
 
-
         for alg_id, alg in simplify_algorithms.items():
             QObject.connect(alg['qobj']['radio'], SIGNAL("toggled(bool)"), lambda: self.show_alg_parameters(self.get_algorithm_selected()))
-
 
         # Add toolbar button and menu item
         self.iface.addToolBarIcon(self.action)
         self.iface.addPluginToMenu(u"&SimpliPy", self.action)
-
 
         self.refresh_constraint_options_gui()
         self.refresh_input_layer_list()
 
     def refresh_constraint_options_gui(self):
         layer = self.get_input_layer()
-        layer_geometry_type = geometryTypeMap[layer.geometryType()] if layer else None
+        layer_geometry_type = geometryTypeMap.get(layer.geometryType(), None) if layer else None
 
         line_layer = layer_geometry_type == "LineString"
         poly_layer = layer_geometry_type == "Polygon"
@@ -198,9 +200,6 @@ class simplipy:
 
         ui.cnstr_expandcontract.setEnabled(poly_layer)
         ui.select_cnstr_expandcontract.setEnabled(ui.cnstr_expandcontract.isChecked() and poly_layer)
-
-        ui.label_precision_repair.setEnabled(ui.cnstr_repairintersections.isChecked())
-        ui.doubleSpinBox_precision_repair.setEnabled(ui.cnstr_repairintersections.isChecked())
 
         ui.label_min_points_polygon.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and poly_layer)
         ui.spinBox_min_points_polygon.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and poly_layer)
@@ -229,6 +228,8 @@ class simplipy:
             alg2['qobj']['parameter_group'].setVisible(alg2_id == alg_id)
 
     def get_input_layer(self):
+        if not self._refreshing_input_layer_list:
+            self.refresh_input_layer_list()
         idx = self.dlg.ui.inputlayerComboBox.currentIndex()
         if idx is None or idx < 0 or idx >= len(self.input_layer_list):
             return None
@@ -245,7 +246,15 @@ class simplipy:
     #    self.dlg.ui.radio_output_attribute.setChecked(True)
 
     def refresh_input_layer_list(self):
-        active_layer = self.iface.activeLayer()
+        self._refreshing_input_layer_list = True
+
+        selected_layer = self.get_input_layer()
+        # Check if layer exists
+        if selected_layer not in self.layerRegistry.mapLayers().values():
+            selected_layer = None
+        if not selected_layer:
+            selected_layer = self.iface.activeLayer()
+
         inputlayer = self.dlg.ui.inputlayerComboBox
         inputlayer.clear()
         layers = self.layerRegistry.mapLayers().values()
@@ -255,16 +264,17 @@ class simplipy:
         for (i, layer) in enumerate(layers):
             self.input_layer_list.append(layer)
             inputlayer.addItem(layer.name())
-            if active_layer and layer.name() == active_layer.name():
+            if selected_layer and layer.name() == selected_layer.name():
                 sel = i
 
         if sel is not None:
             inputlayer.setCurrentIndex(sel)
-            if active_layer:
-                if active_layer.selectedFeatureCount() > 0:
+            if selected_layer:
+                if selected_layer.selectedFeatureCount() > 0:
                     self.dlg.ui.features_selected_radio.setChecked(True)
                 else:
                     self.dlg.ui.features_all_radio.setChecked(True)
+        self._refreshing_input_layer_list = False
 
     def get_total_features(self, layer):
         try:
@@ -293,8 +303,9 @@ class simplipy:
                 features = []
         return features
 
-
     def refresh_feature_count(self):
+        if self._refreshing_input_layer_list:
+            return
         layer = self.get_input_layer()
         if layer is None:
             num_features = 0
@@ -303,9 +314,11 @@ class simplipy:
         self.dlg.ui.label_total_features.setText(str(num_features))
 
     def inputlayer_changed(self):
+        if self._refreshing_input_layer_list:
+            return
         self.refresh_feature_count()
         self.refresh_constraint_options_gui()
-        #self.refresh_output_field_list()
+        # self.refresh_output_field_list()
 
     # def refresh_output_field_list(self):
     #     outputfield = self.dlg.ui.output_field_attribute
@@ -376,7 +389,6 @@ class simplipy:
         constraints['simplify_shared_edges'] = is_activated(self.dlg.ui.cnstr_sharededges)
         constraints['simplify_non_shared_edges'] = is_activated(self.dlg.ui.cnstr_nonsharededges)
         constraints['repair_intersections'] = is_activated(self.dlg.ui.cnstr_repairintersections)
-        constraints['repair_intersections_precision'] = float(self.dlg.ui.doubleSpinBox_precision_repair.value())
 
         constraints['prevent_shape_removal'] = is_activated(self.dlg.ui.cnstr_preventshaperemoval)
         min_points = None
@@ -440,7 +452,21 @@ class simplipy:
 
     sthread = None
     def start_simplify(self):
+        tstart = time.time()
         self.error = False
+
+        input_layer = self.get_input_layer()
+        self.refresh_input_layer_list()
+        if input_layer != self.get_input_layer():
+            self.log_clear()
+            self.log("Input layer no longer exists. Please select another one")
+            return
+        layer = self.get_input_layer()
+        if layer is None:
+            self.log_clear()
+            self.log("Error: No layer selected")
+            return
+
         if self.sthread is not None:
             # if thread running, stop it (or try to stop it)
             self.sthread.stop()
@@ -460,11 +486,6 @@ class simplipy:
                 self.log("{}:".format(tag))
                 for key, value in keyvalues:
                     self.log("    {} = {}".format(key, value))
-
-            layer = self.get_input_layer()
-            if layer is None:
-                self.log("Error: No layer selected")
-                return
 
             self.dlg.ui.start_button.setDisabled(True)
             self.dlg.ui.start_button.setText("Starting...")
@@ -580,6 +601,11 @@ class simplipy:
 
                     if tag == 'size' and (pcnt and pcnt > 95):
                         self.log("Hint: Not enough simplification? Try modifying the algorithm parameters")
+                total_time = time.time() - tstart
+                if total_time > 10:
+                    self.log("Total time = {} seconds".format(int(total_time)))
+                else:
+                    self.log("Total time = {:.2f} seconds".format(total_time))
 
                 self.sthread = None
 
@@ -618,7 +644,6 @@ class simplipy:
         self.dlg.ui.group_Constraints.setDisabled(not enabled)
         self.dlg.ui.group_Options.setDisabled(not enabled)
 
-
     # run method that performs all the real work
     def run(self):
         # show the dialog
@@ -629,7 +654,7 @@ class simplipy:
         self.log("Simplipy {} Log:".format(version))
 
         self.refresh_input_layer_list()
-        #self.refresh_output_field_list()
+        # self.refresh_output_field_list()
         self.show_alg_parameters(self.get_algorithm_selected())
 
         # Run the dialog event loop
@@ -678,7 +703,6 @@ class SimplifyThread(WorkerThread):
         WorkerThread.stop(self)
 
     def simplifyFeature(self, feature):
-        #Simplify feature
         wkb = feature.geometry().asWkb()
         wkb_simplified = self.simplifier.simplify(wkb)
 
@@ -711,19 +735,14 @@ class SimplifyThread(WorkerThread):
                 last_p = p_int
         self.emit(SIGNAL("progress( PyQt_PyObject )"), 100.0)
 
-
-
     def doWork(self):
         try:
-            i = 0
-            last_p = 0
             self.emit(SIGNAL("progress( PyQt_PyObject )"), 0)
             
             def push_progress(msg, bar_msg=None):
                 self.logger("Progress = %s" % str(msg))
                 if bar_msg:
                     self.emit(SIGNAL("progress( PyQt_PyObject )"), bar_msg)
-
 
             # Fill chain db
             self.logger("fill chain db")

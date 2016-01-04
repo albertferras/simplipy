@@ -3,29 +3,79 @@ Created on Sep 6, 2013
 
 @author: albert
 '''
-import operator
+import math
 
 
-def raytrace(x0, y0, x1, y1):
-    dx = abs(x1 - x0);
-    dy = abs(y1 - y0);
-    x = x0;
-    y = y0;
-    n = 1 + dx + dy;
-    x_inc = 1 if (x1 > x0) else -1;
-    y_inc = 1 if (y1 > y0) else -1;
-    error = dx - dy;
-    dx *= 2;
-    dy *= 2;
-    while n > 0:
-        yield (x,y)
-        n -= 1
-        if error > 0:
-            x += x_inc
-            error -= dy
+def boxid_raytrace(pab, k):
+    """ "Raytrace" a line pab into a bitmap grid of size k. Returns all bitmap (x, y) positions where the line pass.
+    
+    Actually, it's the Supercover DDA Algorithm
+
+     Ported from http://stackoverflow.com/questions/18881456/supercover-dda-algorithm
+     which is based on http://lodev.org/cgtutor/raycasting.html
+    """
+    if pab[0] < pab[1]:
+        (x0, y0), (x1, y1) = pab
+    else:
+        (x1, y1), (x0, y0) = pab
+    x0 /= k
+    y0 /= k
+    x1 /= k
+    y1 /= k
+
+    vx = x1 - x0
+    vy = y1 - y0
+    ix = int(math.floor(x0))
+    iy = int(math.floor(y0))
+
+    if vx == vy == 0:
+        yield ix, iy
+        return
+    elif vx == 0:  # vertical line
+        inc = 1 if vy > 0 else -1
+        iy2 = int(y1)
+        while iy != iy2:
+            yield ix, iy
+            iy += inc
+        yield ix, iy
+        return
+    elif vy == 0:  # horizontal line
+        inc = 1 if vx > 0 else -1
+        ix2 = int(x1)
+        while ix != ix2:
+            yield ix, iy
+            ix += inc
+        yield ix, iy
+        return
+
+    dx = math.sqrt(1 + (vy/vx)**2)
+    dy = math.sqrt(1 + (vx/vy)**2)
+
+    if vx < 0:
+        sx = -1
+        ex = (x0 - ix) * dx
+    else:
+        sx = 1
+        ex = (ix + 1 - x0) * dx
+
+    if vy < 0:
+        sy = -1
+        ey = (y0 - iy) * dy
+    else:
+        sy = 1
+        ey = (iy + 1 - y0) * dy
+
+    n = math.sqrt(vx**2 + vy**2)
+    while min(ex, ey) <= n:
+        yield ix, iy
+        if ex < ey:
+            ex += dx
+            ix += sx
         else:
-            y += y_inc
-            error += dx
+            ey += dy
+            iy += sy
+    yield ix, iy
+
 
 class Grid(object):
     def __init__(self, width=0.05):
@@ -33,12 +83,7 @@ class Grid(object):
         self.K = width
 
     def _box_ids(self, pab):
-        ax = int(pab[0][0]/self.K)
-        ay = int(pab[0][1]/self.K)
-        bx = int(pab[1][0]/self.K)
-        by = int(pab[1][1]/self.K)
-        return raytrace(ax, ay, bx, by)
-
+        return boxid_raytrace(pab, self.K)
 
     def add(self, key, pab):
         for box_id in self._box_ids(pab):
@@ -66,38 +111,3 @@ class Grid(object):
                     key1 = keys[i]
                     for j in range(i+1, n):
                         yield (key1, keys[j])
-
-
-
-if __name__ == '__main__':
-    segments = [
-        ((120, 230), (270, 330)),
-        ((180, 180), (340, 300)),
-        ((240, 150), (220, 350)),
-        ((320, 310), (430, 150)),
-        ((740, 450), (660, 100)),
-        ((160, 440), (510, 350)),
-        ((550, 550), (510, 350)),
-        ((-1.595, 43.718), (0.261, 43.534)),
-        ((-1.442, 43.638), (-1.302, 44.148)),
-    ]
-    G = Grid(100)
-    for (key, pab) in enumerate(segments):
-        G.add(key, pab)
-    print G.boxes
-    #
-    # import geotool
-    # qt = QuadTree(segs)
-    # for s1 in segs:
-    #     hits = qt.hit(s1)
-    #     for key in hits:
-    #         if s1[0] >= key:
-    #             continue
-    #         s2 = segs[key]
-    #
-    #
-    #         l1 = segments[s1[0]]
-    #         l2 = segments[s2[0]]
-    #         print "%s x %s = %s" % (s1[0], s2[0], geotool.crosses(l1, l2))
-    #
-    #
