@@ -68,8 +68,37 @@ class ChainsSegment(object):
         self.geometries = geometries
         self.segments = []
         self.chains = chains
-        self.G = grid.Grid(width=0.01)
+        grid_width = self.average_segment_length_sample(max_sample_size=100000)
+        self.G = grid.Grid(width=grid_width)
         self._load_segments()
+
+    def average_segment_length_sample(self, max_sample_size):
+        """ Returns the average segment length from a sample of all segments in self.chains (from original geometry!)
+        """
+        distances = []
+        try:
+            for (c, chain) in enumerate(self.chains):
+                if chain is None:
+                    continue
+                points = iter(chain[ChainDB.CHAIN_POINTS])
+                last = next(points)[P_COORD]
+                for p in points:
+                    p = p[P_COORD]
+                    if last != p:
+                        dist = geotool.distance(p, last)
+                        distances.append(dist)
+                        if len(distances) > max_sample_size:
+                            break
+                    last = p
+                if len(distances) > max_sample_size:
+                    break
+        except StopIteration:
+            pass
+        if len(distances) == 0:
+            return 0.01
+        avg = sum(distances) / len(distances)
+        print "AVERAGE = {:.2f}".format(avg)
+        return avg
 
     def _load_segments(self):
         for (c, chain) in enumerate(self.chains):
@@ -91,7 +120,6 @@ class ChainsSegment(object):
                 # closed chain but first or last point was removed, so
                 # we need to add an additional segment to close the chain
                 self.new_segment(c, last, first)
-                pass
 
     def get_segment_coordinates(self, seg_id):
         c = seg_id[self.SEGID_CHAIN]
@@ -250,7 +278,6 @@ class ChainDB(object):
     def set_constraints(self,
                         expandcontract=None,
                         repair_intersections=False,
-                        repair_intersections_precision=0.01,
                         prevent_shape_removal=None,
                         prevent_shape_removal_min_points=3,
                         use_topology=False,
@@ -262,7 +289,6 @@ class ChainDB(object):
         self.constraint_shared_edges = simplify_shared_edges
         self.constraint_non_shared_edges = simplify_non_shared_edges
         self.constraint_repair_intersections = repair_intersections
-        self.constraint_repair_intersections_precision = repair_intersections_precision
         self.constraint_prevent_shape_removal = prevent_shape_removal
         self.constraint_prevent_shape_removal_min_points = prevent_shape_removal_min_points
         self.constraint_use_topology = use_topology
@@ -365,13 +391,14 @@ class ChainDB(object):
                     modified = True
                     last_modified_by = modifier
                     continue
-
+            if self.DEBUG:
+                print "ALL OK"
+        if self.DEBUG:
+            print "================================="
         if push_progress:
             push_progress('Done!', "Success!")
-        if self.DEBUG:
-            print "DONE"
         if self.printchains:
-                self.print_chains(True)
+            self.print_chains(True)
 
     def chain_shares_edges(self, chain_idx):
         chain = self.chains[chain_idx]
@@ -1030,17 +1057,23 @@ class ChainDB(object):
         chains = self.get_chains_by_geom(geom_idx)
         geom = self.geometries[geom_idx]
 
-        # Get all points of the ring
-        for chain_id in chains:
-            points = self.chains[chain_id][self.CHAIN_POINTS]
-            chain_size = len(filter(lambda p: p[P_REMOVED] is False, points))
-            num_points += chain_size
-            original_num_points += len(points)
-
         # Check if line is a closed chain
         first_point = self.chains[chains[0]][self.CHAIN_POINTS][0]
         last_point = self.chains[chains[-1]][self.CHAIN_POINTS][-1]
         closed_chain = (first_point[P_COORD] == last_point[P_COORD])
+
+        # Get all points of the ring
+        last_simp_p = None
+        last_orig_p = None
+        for p in self.iter_chain_points(geom_idx):
+            if p[P_REMOVED]:
+                if last_orig_p != p:
+                    original_num_points += 1
+                last_orig_p = p
+            else:
+                if last_simp_p != p:
+                    num_points += 1
+                last_simp_p = p
 
         if closed_chain:
             if not first_point[P_REMOVED] and not last_point[P_REMOVED]:
@@ -1049,13 +1082,12 @@ class ChainDB(object):
                 original_num_points -= 1
 
             if num_points < min_points:
-                if first_point[P_REMOVED] and last_point[P_REMOVED]:
-                    # Will now recover
-                    num_points += 1
-
                 # Closed chains must remain closed
                 first_point[P_REMOVED] = False
                 last_point[P_REMOVED] = False
+                if first_point[P_REMOVED] and last_point[P_REMOVED]:
+                    # Update num distinct points
+                    num_points += 1
 
         # If not enough points, simplify again using visvalingam until MIN_POINTS is reached when possible
         if num_points < min_points:
@@ -1063,9 +1095,7 @@ class ChainDB(object):
             shares_edge = any([self.chain_shares_edges(chain_idx) for chain_idx in chains])
             if not shares_edge and closed_chain:
                 # use visvalingam to simplify the whole ring
-                pointsdata_list = []
-                for chain_id in chains:
-                    pointsdata_list.extend(self.chains[chain_id][self.CHAIN_POINTS])
+                pointsdata_list = list(self.iter_chain_points(geom_idx))
                 for p in pointsdata_list:
                     p[P_REMOVED] = False
                 visvalingam(pointsdata_list, minArea=99999, ring_min_points=min_points)
@@ -1191,6 +1221,7 @@ class ChainDB(object):
                 if self.constraint_prevent_shape_removal:
                     print "Warning: LinearRing(%s) with %s points found!" % (geom_idx, cnt)
                     print filter(lambda p: p[P_REMOVED] is False, pointsdata_ring)
+                    raise NotImplementedError("Error! Prevent shape removal didn't work properly")
                 return None
         elif gtype == "LineString":
             geom = ogr.Geometry(ogr.wkbLineString)
@@ -1212,6 +1243,7 @@ class ChainDB(object):
                 if self.constraint_prevent_shape_removal:
                     print "Warning: LineString(%s) with %s points found!" % (geom_idx, cnt)
                     print filter(lambda p: p[P_REMOVED] is False, pointsdata)
+                    raise NotImplementedError("Error! Prevent shape removal didn't work properly")
                 return None
         else:
             raise Exception("Build geometry type %s not implemented" % gtype)

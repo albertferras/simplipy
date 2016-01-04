@@ -74,6 +74,13 @@ class TestCaseGeometry(unittest.TestCase):
         g = shapely.wkb.loads(wkb)
         if g.is_valid:
             return
+
+        # TODO: Ignoring nested shells invalidation until plugin supports it
+        # http://gis.stackexchange.com/questions/171501/when-validating-geometries-what-are-nested-shells
+        g = g.buffer(0)
+        if g.is_valid:
+            return
+
         shapely.validation.explain_validity(g)
         raise self.failureException("Geometry is not valid")
 

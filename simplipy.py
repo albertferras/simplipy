@@ -199,9 +199,6 @@ class simplipy:
         ui.cnstr_expandcontract.setEnabled(poly_layer)
         ui.select_cnstr_expandcontract.setEnabled(ui.cnstr_expandcontract.isChecked() and poly_layer)
 
-        ui.label_precision_repair.setEnabled(ui.cnstr_repairintersections.isChecked())
-        ui.doubleSpinBox_precision_repair.setEnabled(ui.cnstr_repairintersections.isChecked())
-
         ui.label_min_points_polygon.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and poly_layer)
         ui.spinBox_min_points_polygon.setEnabled(ui.cnstr_preventshaperemoval.isChecked() and poly_layer)
 
@@ -376,7 +373,6 @@ class simplipy:
         constraints['simplify_shared_edges'] = is_activated(self.dlg.ui.cnstr_sharededges)
         constraints['simplify_non_shared_edges'] = is_activated(self.dlg.ui.cnstr_nonsharededges)
         constraints['repair_intersections'] = is_activated(self.dlg.ui.cnstr_repairintersections)
-        constraints['repair_intersections_precision'] = float(self.dlg.ui.doubleSpinBox_precision_repair.value())
 
         constraints['prevent_shape_removal'] = is_activated(self.dlg.ui.cnstr_preventshaperemoval)
         min_points = None

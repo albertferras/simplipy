@@ -28,7 +28,10 @@ def boxid_raytrace(pab, k):
     ix = int(math.floor(x0))
     iy = int(math.floor(y0))
 
-    if vx == 0:  # vertical line
+    if vx == vy == 0:
+        yield ix, iy
+        return
+    elif vx == 0:  # vertical line
         inc = 1 if vy > 0 else -1
         iy2 = int(y1)
         while iy != iy2:

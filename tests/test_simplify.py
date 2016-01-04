@@ -20,7 +20,6 @@ def data_path(name):
 # constraints:
 # expandcontract=None,
 # repair_intersections=False,
-# repair_intersections_precision=0.01,
 # prevent_shape_removal=None,
 # prevent_shape_removal_min_points=3,
 # use_topology=False,
@@ -37,11 +36,11 @@ class TestSimplifier(TestCaseGeometry):
                                       check_valid=True, check_simple=True):
         if not isinstance(geometries, dict):
             geometries = {'A': geometries}
-        geometries_removed = 0
+        geometries_removed = set()
         simp_geometries = {}
         for gid, simp_wkb in self.simplify_geometries(geometries, simplifier, simplifier_params, constraints):
             if simp_wkb is None:
-                geometries_removed += 1
+                geometries_removed.add(gid)
                 continue
             try:
                 simp_geometries[gid] = simp_wkb
@@ -53,7 +52,9 @@ class TestSimplifier(TestCaseGeometry):
                 print "Failed on geometry id={}".format(gid)
                 raise
         if constraints.get('prevent_shape_removal') is True:
-            self.assertEquals(geometries_removed, 0)
+            self.assertEquals(len(geometries_removed), 0,
+                              msg="Expected 0 geometries removed, but disapparead: {}"
+                              .format(list(geometries_removed)))
         return simp_geometries
 
     def test_preserve_topology(self):
@@ -70,10 +71,12 @@ class TestSimplifier(TestCaseGeometry):
 
     def test_expandcontract(self):
         geometries = load_shapefile(data_path('naturalearth_nations/ne_10m_admin_0_countries.shp'), geom_key='ISO_A2')
-        # geometries = {k: v for k, v in geometries.iteritems() if k.split(":")[1] == 'GR'}
+        # geometries = load_shapefile(data_path('hrp00b11m/canada.shp'), geom_key='HR_UID')  # A LOT OF MEMORY REQUIRED
+        # geometries = {k: v for k, v in geometries.iteritems() if k.split(":")[1] == 'AQ'}
         # geometries = {fname: load_wkt(data_path(fname)).wkb for fname in ['poly1.wkt', 'poly2.wkt', 'poly3.wkt',
-        #                                                                   'poly4.wkt', 'poly5.wkt']}
-        # geometries = {fname: load_wkt(data_path(fname)).wkb for fname in ['poly5.wkt']}
+        #                                                                   'poly4.wkt', 'poly5.wkt', 'poly6.wkt',
+        #                                                                   'poly7.wkt']}
+        # geometries = {fname: load_wkt(data_path(fname)).wkb for fname in ['poly7.wkt']}
 
         simplifier = douglaspeucker
         simplifier_params = dict(epsilon=0.1)
@@ -93,7 +96,7 @@ class TestSimplifier(TestCaseGeometry):
                                )
             simp_geometries = self._test_geometry_simplification(geometries, simplifier, simplifier_params, constraints,
                                                                  check_valid=False, check_simple=False)
-            self.save_shapefile(data_path('test'), 'simp{}'.format(mode), simp_geometries)
+            # self.save_shapefile(data_path('test'), 'simp{}'.format(mode), simp_geometries)
             print "Validating geometries..."
             for key, simp_wkb in simp_geometries.iteritems():
                 try:
@@ -119,9 +122,8 @@ class TestSimplifier(TestCaseGeometry):
         geometries = load_shapefile(data_path('naturalearth_nations/ne_10m_admin_0_countries.shp'),
                                     geom_key='ISO_A2')
         simplifier = douglaspeucker
-        simplifier_params = dict(epsilon=0.01)
-        constraints = dict(repair_intersections=True,
-                           repair_intersections_precision=0.001)
+        simplifier_params = dict(epsilon=0.1)
+        constraints = dict(repair_intersections=True)
         self._test_geometry_simplification(geometries, simplifier, simplifier_params, constraints,
                                            check_valid=True, check_simple=True)
 
@@ -129,8 +131,7 @@ class TestSimplifier(TestCaseGeometry):
         line_geom = load_wkt(data_path('line1.wkt'))
         simplifier = douglaspeucker
         simplifier_params = dict(epsilon=150)
-        constraints = dict(repair_intersections=True,
-                           repair_intersections_precision=0.001)
+        constraints = dict(repair_intersections=True)
         self._test_geometry_simplification(line_geom.wkb, simplifier, simplifier_params, constraints,
                                            check_valid=True, check_simple=True)
 
@@ -151,19 +152,8 @@ class TestSimplifier(TestCaseGeometry):
             wkb = gpoly.ExportToWkb(1)
 
             cdb.add_geometry('A', wkb)
-
-            cdb.print_geoms()
-            cdb.print_chains()
-            print cdb.chains
-            print "-"*30
-
             wkb2 = cdb.to_wkb('A')
 
-            import shapely.wkb
-            p1 = shapely.wkb.loads(wkb).exterior.coords
-            p2 = shapely.wkb.loads(wkb2).exterior.coords
-            print list(p1)
-            print list(p2)
             self.assertEquals(wkb, wkb2)
 
 if __name__ == "__main__":

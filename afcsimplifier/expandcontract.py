@@ -1,8 +1,8 @@
 #!/usr/bin/python -u
 #encoding:utf-8
 
-from afcsimplifier import geotool
-from afcsimplifier.util import P_COORD, P_REMOVED
+import geotool
+from util import P_COORD, P_REMOVED
 
 
 # determine if a point is inside a given polygon or not
@@ -10,7 +10,7 @@ from afcsimplifier.util import P_COORD, P_REMOVED
 # source: http://www.ariel.com.au/a/python-point-int-poly.html
 def point_inside_polygon(point, poly):
     x, y = point
-    n = len(poly) - 1
+    n = len(poly)
     inside = False
 
     p1x, p1y = poly[0][P_COORD]
@@ -36,12 +36,13 @@ def is_valid(segment, previous_segment, next_segment, expand=True):
     :param expand: true for Expand, false for Contract
     :return:
     """
+    if len(segment) < 3:
+        return True
+
     # print "------------"
     # print "CHECK VALID prev", previous_segment[0][P_COORD], previous_segment[-1][P_COORD], len(previous_segment)
     # print "CHECK VALID cur", segment[0][P_COORD], segment[-1][P_COORD], len(segment)
     # print "CHECK VALID next", next_segment[0][P_COORD], next_segment[-1][P_COORD], len(next_segment)
-    if len(segment) < 3:
-        return True
 
     # 1 - Check that all points from the original geometry between the simplified segment points are
     # on one side of the simplified segment.
@@ -80,7 +81,6 @@ def is_valid(segment, previous_segment, next_segment, expand=True):
 
     if any(point_inside_polygon(p, segment) for p in points_to_check):
         return False
-
     return True
 
 
