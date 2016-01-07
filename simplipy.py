@@ -33,7 +33,6 @@ from afcsimplifier.douglaspeucker import douglaspeucker
 from afcsimplifier.visvalingam import visvalingam
 import ConfigParser
 import StringIO
-import binascii
 import os.path
 import traceback
 import sys
@@ -222,6 +221,8 @@ class simplipy:
         # Remove the plugin menu item and icon
         self.iface.removePluginMenu(u"&SimpliPy", self.action)
         self.iface.removeToolBarIcon(self.action)
+        self.layerRegistry.layersAdded.disconnect(self.refresh_input_layer_list)
+        self.layerRegistry.layersRemoved.disconnect(self.refresh_input_layer_list)
 
     def show_alg_parameters(self, alg_id):
         for alg2_id, alg2 in simplify_algorithms.items():
