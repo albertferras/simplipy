@@ -10,6 +10,7 @@ import shapely.validation
 import ogr
 import os
 
+
 def load_wkt(path):
     with open(path, 'r') as f:
         return shapely.wkt.load(f)

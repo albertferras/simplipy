@@ -4,7 +4,7 @@ import shapely.wkb
 import shapely.geometry
 
 import geotool
-from util import P_REMOVED, P_COORD, to_points_data, DIRECTION_NORMAL, DIRECTION_REVERSE
+from util import P_REMOVED, P_COORD, to_points_data, DIRECTION_NORMAL, DIRECTION_REVERSE, to_points_data
 from visvalingam import visvalingam
 from douglaspeucker import douglaspeucker
 import expandcontract
@@ -16,6 +16,7 @@ import copy
 import grid
 import time
 import progress
+from collections import namedtuple
 
 # GEOMETRY_TYPES = {
 #     #0: "GeometryCollection",
@@ -234,6 +235,9 @@ class JunctionPoints(object):
         return self.junctions.get(key)
 
 
+CGeometry = namedtuple('CGeometry', ['type', 'parent', 'children'])
+
+
 class ChainDB(object):
     KEY_SUBGEOMETRY = object()
 
@@ -245,10 +249,6 @@ class ChainDB(object):
 
     CHAIN_PARENTS = 0  # a chain can have 1 or 2 parents (shared polygons). 1st parent has DIRECTION_NORMAL and 2nd DIRECTION_REVERSE
     CHAIN_POINTS = 1
-
-    GEOM_TYPE = 0
-    GEOM_PARENT = 1
-    GEOM_CHILDREN = 2
 
     def __init__(self):
         self.keys = {}          # (geom index, chain index)
@@ -406,8 +406,8 @@ class ChainDB(object):
 
     def print_geoms(self):
         print "Geometries:"
-        for (g, geom) in enumerate(self.geometries):
-            print "%4d -> %16s : %6s : %s" % (g, geom[self.GEOM_TYPE], geom[self.GEOM_PARENT], geom[self.GEOM_CHILDREN])
+        for (g, cgeom) in enumerate(self.geometries):
+            print "%4d -> %16s : %6s : %s" % (g, cgeom.type, cgeom.parent, cgeom.children)
 
     def paint_chains(self):
         for (c,chain) in enumerate(self.chains):
@@ -517,12 +517,12 @@ class ChainDB(object):
 
         disable_chains = set()
         for geom in self.geometries:
-            if geom[self.GEOM_TYPE] != "LinearRing":
+            if geom.type != "LinearRing":
                 continue
             if debug:
                 print "---------------------"
-                print "Geom %s" % geom[self.GEOM_PARENT]
-            geom_chains = geom[self.GEOM_CHILDREN]
+                print "Geom %s" % geom.parent
+            geom_chains = geom.children
 
             new_chain_indexes = []
             chain_created = False
@@ -597,9 +597,12 @@ class ChainDB(object):
 
             if len(new_chain_indexes) > 0:
                 parents = chain[self.CHAIN_PARENTS]
-                for parent in parents:
-                    geom = self.geometries[parent]
-                    geom[self.GEOM_CHILDREN] = new_chain_indexes
+                for parent_geom_idx in parents:
+                    parent_cgeom = self.geometries[parent_geom_idx]
+                    self.geometries[parent_geom_idx] = CGeometry(type=parent_cgeom.type,
+                                                                 parent=parent_cgeom.parent,
+                                                                 children=new_chain_indexes)
+                    #geom.children = new_chain_indexes
 
             for c in disable_chains:
                 self.chains[c] = None
@@ -671,7 +674,7 @@ class ChainDB(object):
         Does not return consecutive identical points unless they're the first and last one of the full list of points.
         """
         geom = self.geometries[geom_idx]
-        chain_ids = geom[self.GEOM_CHILDREN]
+        chain_ids = geom.children
 
         last_p = None
         for chain_id in chain_ids:
@@ -742,13 +745,13 @@ class ChainDB(object):
         :return: list of geom_idx with chains
         """
         geom = self.geometries[geom_idx]
-        geom_type = geom[self.GEOM_TYPE]
+        geom_type = geom.type
         if geom_type is None:
             return
         elif geom_type == "LinearRing" or geom_type == "LineString":
             yield geom_idx
         else:
-            tmp = (self.find_parts_with_chains(child_geom_idx) for child_geom_idx in geom[self.GEOM_CHILDREN])
+            tmp = (self.find_parts_with_chains(child_geom_idx) for child_geom_idx in geom.children)
             for geom_idx2 in itertools.chain(*tmp):
                 yield geom_idx2
 
@@ -952,7 +955,8 @@ class ChainDB(object):
             geometry = None
             raise
 
-        self.keys[key] = None # geom index
+        self.keys[key] = None  # geom index
+
         i = self._add_geometry(key, geometry)
         if i is None:
             raise Exception("Invalid geometry [key='%s']" % key)
@@ -960,53 +964,37 @@ class ChainDB(object):
         del geometry
 
     def _add_geometry(self, key, geometry, parent=None, **kwargs):
-        if geometry is not None:
-            item = [geometry.type, parent, None]  # 0=type, 1=parent(index), 2=children(index)
-        else:
-            item = [None, parent, None]
-
-        i = len(self.geometries)  # index of 'this geometry' (parent for children)
-        self.geometries.append(item)
-
+        geom_idx = len(self.geometries)  # index of 'this geometry' (parent for children)
+        self.geometries.append(None)
         if geometry is None:
-            return i
-        elif geometry.type in ["MultiPolygon", "MultiLineString"]:
-            children = [self._add_geometry(key, poly, parent=i, **kwargs) for poly in geometry.geoms]
-        elif geometry.type == 'Polygon':
-            children = []
-            c = self._add_geometry(key, geometry.exterior, parent=i, is_exterior=True, **kwargs)
-            children.append(c)
-
-            for interior in geometry.interiors:
-                c = self._add_geometry(key, interior, parent=i, is_exterior=False, **kwargs)
-                children.append(c)
-        elif geometry.type == 'LinearRing':
-            children = []
-            points = self.linearring_to_point_list(geometry, is_exterior=kwargs['is_exterior'])
-            chain_data = ([i], to_points_data(points))  # (parents (this ring), list of points)
-            self.chains.append(chain_data)
-            c = len(self.chains)-1
-            children.append(c)
-        elif geometry.type == "LineString":
-            children = []
-            points = list(geometry.coords)
-            chain_data = ([i], to_points_data(points))
-            self.chains.append(chain_data)
-            c = len(self.chains)-1
-            children.append(c)
+            self.geometries[geom_idx] = CGeometry(None, parent, None)
         else:
-            raise Exception("Not supported geometry type: %s" % geometry.type)
-        item[2] = children
-        return i
+            if geometry.type in ["MultiPolygon", "MultiLineString"]:
+                children = [self._add_geometry(key, poly, parent=geom_idx, **kwargs) for poly in geometry.geoms]
+            elif geometry.type == 'Polygon':
+                children = []
+                c = self._add_geometry(key, geometry.exterior, parent=geom_idx, is_exterior=True, **kwargs)
+                children.append(c)
 
-    def linearring_to_point_list(self, geometry, is_exterior=True):
-        # Exterior LinearRing points orientation must be counterclockwise
-        # Interior LinearRing points orientation must be clockwise
-        point_list = list(geometry.coords)
-        if geometry.is_ccw != is_exterior:
-            # if clockwise and exterior or counterclockwise and interior -> reverse points (as they should)
-            point_list = point_list[::-1]
-        return point_list
+                for interior in geometry.interiors:
+                    c = self._add_geometry(key, interior, parent=geom_idx, is_exterior=False, **kwargs)
+                    children.append(c)
+            elif geometry.type == 'LinearRing':
+                children = []
+                chain_data = ([geom_idx], to_points_data(geometry, kwargs['is_exterior']))
+                self.chains.append(chain_data)
+                c = len(self.chains)-1
+                children.append(c)
+            elif geometry.type == "LineString":
+                children = []
+                chain_data = ([geom_idx], to_points_data(geometry, is_exterior=False))
+                self.chains.append(chain_data)
+                c = len(self.chains)-1
+                children.append(c)
+            else:
+                raise Exception("Not supported geometry type: %s" % geometry.type)
+            self.geometries[geom_idx] = CGeometry(geometry.type, parent, children)
+        return geom_idx
 
     def split_chain(self, point_list):
         # each point list includes the first and last point of the next point list.
@@ -1040,11 +1028,11 @@ class ChainDB(object):
     def _get_line_primitives(self, geom_idx):
         """ Returns geom_idx for linestrings and linearrings in geometry [geom_idx]"""
         geom = self.geometries[geom_idx]
-        gtype = geom[self.GEOM_TYPE]
+        gtype = geom.type
         if gtype == "LinearRing" or gtype == "LineString":
             yield geom_idx
         else:
-            for children_geom_idx in geom[self.GEOM_CHILDREN]:
+            for children_geom_idx in geom.children:
                 for ring_geom_idx in self._get_line_primitives(children_geom_idx):
                     yield ring_geom_idx
 
@@ -1101,7 +1089,7 @@ class ChainDB(object):
                 visvalingam(pointsdata_list, minArea=99999, ring_min_points=min_points)
 
                 # Closed linestrings must remain closed
-                if geom[self.GEOM_TYPE] == "LineString":
+                if geom.type == "LineString":
                     first_point[P_REMOVED] = False
                     last_point[P_REMOVED] = False
             # Not allowed to do polygon simplification
@@ -1158,15 +1146,15 @@ class ChainDB(object):
 
     def get_chains_by_geom(self, geom_idx):
         geom = self.geometries[geom_idx]
-        if geom[self.GEOM_TYPE] is None:
+        if geom.type is None:
             return []
-        elif geom[self.GEOM_TYPE] in ["LinearRing", 'LineString']:
-            chain_ids = geom[self.GEOM_CHILDREN]
+        elif geom.type in ["LinearRing", 'LineString']:
+            chain_ids = geom.children
             return chain_ids
-        elif geom[self.GEOM_TYPE] in ['Polygon', 'MultiPolygon', 'MultiLineString']:
-            return reduce(lambda a, b: a+b, map(self.get_chains_by_geom, geom[self.GEOM_CHILDREN]))
+        elif geom.type in ['Polygon', 'MultiPolygon', 'MultiLineString']:
+            return reduce(lambda a, b: a+b, map(self.get_chains_by_geom, geom.children))
         else:
-            raise NotImplemented("get_chains_by_geom not implemented for {}".format(geom[self.GEOM_TYPE]))
+            raise NotImplemented("get_chains_by_geom not implemented for {}".format(geom.type))
 
     def _build_geometry(self, geom_idx):
         (gtype, parent, children) = self.geometries[geom_idx]
