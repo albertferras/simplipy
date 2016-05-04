@@ -254,11 +254,13 @@ class simplipy:
         if selected_layer not in self.layerRegistry.mapLayers().values():
             selected_layer = None
         if not selected_layer:
-            selected_layer = self.iface.activeLayer()
+            if self.iface.activeLayer():
+                if self.iface.activeLayer().type() == QgsMapLayer.VectorLayer:
+                    selected_layer = self.iface.activeLayer()
 
         inputlayer = self.dlg.ui.inputlayerComboBox
         inputlayer.clear()
-        layers = self.layerRegistry.mapLayers().values()
+        layers = [ lyr for lyr in self.layerRegistry.mapLayers().values() if lyr.type() == QgsMapLayer.VectorLayer ]
 
         self.input_layer_list = []
         sel = None
