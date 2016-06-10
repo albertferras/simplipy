@@ -12,7 +12,7 @@
 name=SimpliPy
 qgisMinimumVersion=2.0
 description=Simplification tools with constraints
-version=0.51
+version=0.52
 author=Albert Ferràs
 email=albertferras@gmail.com
 about=Plugin to simplify geometries with multiple algorithm, parameters and constraints with advanced options
