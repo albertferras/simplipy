@@ -69,7 +69,7 @@ class ChainsSegment(object):
         self.geometries = geometries
         self.segments = []
         self.chains = chains
-        grid_width = self.average_segment_length_sample(max_sample_size=100000)
+        grid_width = 3 * self.average_segment_length_sample(max_sample_size=100000)
         self.G = grid.Grid(width=grid_width)
         self._load_segments()
 
@@ -798,6 +798,7 @@ class ChainDB(object):
         # Find Intersections
         t = time.time()
         intersections = []
+
         while iter_k < len(cs.segments):
             s1 = cs.segments[iter_k]
             iter_k += 1
