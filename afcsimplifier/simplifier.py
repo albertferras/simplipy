@@ -6,16 +6,13 @@ import shapely.geometry
 import geotool
 from util import P_REMOVED, P_COORD, to_points_data, DIRECTION_NORMAL, DIRECTION_REVERSE, to_points_data
 from visvalingam import visvalingam
-from douglaspeucker import douglaspeucker
 import expandcontract
 
 import itertools
-#import operator
 import tools
 import copy
 import grid
 import time
-import progress
 from collections import namedtuple
 
 # GEOMETRY_TYPES = {
@@ -57,14 +54,13 @@ def list_difference(l1, l2):
 is_closed_chain = lambda points: points[0][P_COORD] == points[-1][P_COORD]
 
 
+CSegment = namedtuple('CSegment', ['idx',  # index of this segment in the 'segment list'
+                                   'chain_idx',  # chain_idx in the 'chains list'
+                                   'points_idx',  # Two indexes in chains[chain_idx].points representing the segment
+                                   ])
+
+
 class ChainsSegment(object):
-    SEGID_IDX = 0
-    SEGID_CHAIN = 1
-    SEGID_POINTS_IDX = 2
-
-    SEGMENT_SEGID = 0
-    SEGMENT_COORDS = 1
-
     def __init__(self, geometries, chains):
         self.geometries = geometries
         self.segments = []
@@ -98,7 +94,6 @@ class ChainsSegment(object):
         if len(distances) == 0:
             return 0.01
         avg = sum(distances) / len(distances)
-        print "AVERAGE = {:.2f}".format(avg)
         return avg
 
     def _load_segments(self):
@@ -122,23 +117,22 @@ class ChainsSegment(object):
                 # we need to add an additional segment to close the chain
                 self.new_segment(c, last, first)
 
-    def get_segment_coordinates(self, seg_id):
-        c = seg_id[self.SEGID_CHAIN]
-        (i, j) = seg_id[self.SEGID_POINTS_IDX]
-        chain_points = self.get_chain_points(c)
+    def get_segment_coordinates(self, csegment):
+        (i, j) = csegment.points_idx
+        chain_points = self.get_chain_points(csegment.chain_idx)
         return chain_points[i][P_COORD], chain_points[j][P_COORD]
 
-    def is_consecutive_segments(self, seg_id1, seg_id2):
-        """ Returns true if segments seg_id1,2 are from the same chain and are consecutive (touching endpoints)
+    def is_consecutive_segments(self, cseg1, cseg2):
+        """ Returns true if segments cseg1, cseg2 are from the same chain and are consecutive (touching endpoints)
         """
         # works if its the same chain only!
-        c1 = seg_id1[self.SEGID_CHAIN]
-        c2 = seg_id2[self.SEGID_CHAIN]
+        c1 = cseg1.chain_idx
+        c2 = cseg2.chain_idx
         if c1 == c2:
             # Segments come from the same chain, now check if they're consecutive
             points = self.get_chain_points(c1)
-            (i1, j1) = seg_id1[self.SEGID_POINTS_IDX]
-            (i2, j2) = seg_id2[self.SEGID_POINTS_IDX]
+            (i1, j1) = cseg1.points_idx
+            (i2, j2) = cseg2.points_idx
             if (points[i1][P_COORD] == points[j2][P_COORD]
                     or points[i2][P_COORD] == points[j1][P_COORD]):
                 return True
@@ -146,11 +140,10 @@ class ChainsSegment(object):
 
     def new_segment(self, chain_idx, i, j):
         segment_idx = len(self.segments)
-        seg_id = (segment_idx, chain_idx, (i, j))
-        coords = self.get_segment_coordinates(seg_id)
-        self.G.add(seg_id, coords)
-        segment = (seg_id, coords)
-        self.segments.append(segment)
+        csegment = CSegment(idx=segment_idx, chain_idx=chain_idx, points_idx=(i, j))
+        self.segments.append(csegment)
+        coords = self.get_segment_coordinates(csegment)
+        self.G.add(csegment, coords)
 
     def get_chain_parent(self, chain_idx):
         return self.chains[chain_idx].parents
@@ -158,10 +151,9 @@ class ChainsSegment(object):
     def get_chain_points(self, chain_idx):
         return self.chains[chain_idx].points
 
-    def get_segment_original_chain_coordinates(self, seg_id):
-        chain_idx = seg_id[self.SEGID_CHAIN]
-        (i, j) = seg_id[self.SEGID_POINTS_IDX]
-        points = self.get_chain_points(chain_idx)
+    def get_segment_original_chain_coordinates(self, csegment):
+        (i, j) = csegment.points_idx
+        points = self.get_chain_points(csegment.chain_idx)
         if i < j:
             points = points[i:j+1]
         else:
@@ -169,11 +161,10 @@ class ChainsSegment(object):
         result = map(lambda p: p[P_COORD], points)
         return result
 
-    def recover_chain_points(self, seg_id, points_idx):
-        chain_idx = seg_id[self.SEGID_CHAIN]
-        sidx = seg_id[self.SEGID_IDX]
-        (i, j) = seg_id[self.SEGID_POINTS_IDX]
-        self.segments[sidx] = None  # Mark this segment as deleted
+    def recover_chain_points(self, csegment, points_idx):
+        chain_idx = csegment.chain_idx
+        (i, j) = csegment.points_idx
+        self.segments[csegment.idx] = None  # Mark this segment as deleted
         chain_num_points = len(self.get_chain_points(chain_idx))
         k = i
         for l in points_idx[1:]:
@@ -184,19 +175,19 @@ class ChainsSegment(object):
         if j != k:
             raise Exception("recover chain points failed")
 
-    def is_sharing_chain_with_neighbour(self, seg_id1, seg_id2):
-        c1 = seg_id1[self.SEGID_CHAIN]
-        c2 = seg_id2[self.SEGID_CHAIN]
+    def is_sharing_chain_with_neighbour(self, cseg1, cseg2):
+        c1 = cseg1.chain_idx
+        c2 = cseg2.chain_idx
 
         chain1 = self.chains[c1]
         parents1 = chain1.parents
         return c1 == c2 and len(parents1) != 1
 
-    def is_deleted_segment(self, seg_id):
-        return self.segments[seg_id[self.SEGID_IDX]] is None
+    def is_deleted_segment(self, csegment):
+        return self.segments[csegment.idx] is None
 
-    def is_original_segment(self, seg_id):
-        (i,j) = seg_id[self.SEGID_POINTS_IDX]
+    def is_original_segment(self, csegment):
+        (i, j) = csegment.points_idx
         return i == j-1
 
     def get_point(self, chain_idx, i):
@@ -784,6 +775,7 @@ class ChainDB(object):
         return repaired
 
     def _repair_intersections(self, cs, iter_k, epsilon, debug=False):
+        # debug = True
         if debug:
             print "repair:", iter_k, epsilon
         # returns true if a point was recovered, false otherwise
@@ -794,64 +786,54 @@ class ChainDB(object):
         t = time.time()
         intersections = []
         while iter_k < len(cs.segments):
-            s1 = cs.segments[iter_k]
+            cseg1 = cs.segments[iter_k]
             iter_k += 1
-            if s1 is None:  # original or fixed segments doesn't have to be checked
+            if cseg1 is None:  # original or fixed segments doesn't have to be checked
                 continue
-            seg_id = s1[ChainsSegment.SEGMENT_SEGID]
-            # print ">>> check intersections", seg_id
-            #if is_original_segment(seg_id):
-            #    continue
-            line1 = cs.get_segment_coordinates(seg_id)
 
-            # dbg = seg_id[ChainsSegment.SEGID_POINTS_IDX] in ((34, 35), (21, 32))
-            # if dbg:
-            #     print "====="
-            #     print seg_id
-            for seg_id2 in cs.G.hit(line1):
-                # if dbg:
-                #     print "\t", seg_id2
-                if seg_id == seg_id2:
+            line1 = cs.get_segment_coordinates(cseg1)
+
+            for cseg2 in cs.G.hit(line1):
+                if cseg1 == cseg2:
                     continue
-                if cs.is_consecutive_segments(seg_id, seg_id2):
+                if cs.is_consecutive_segments(cseg1, cseg2):
                     # Consecutive segments
 
                     # If lines are collinear, delete common endpoint to save 1 point and avoid self-intersection
-                    line2 = cs.get_segment_coordinates(seg_id2)
+                    line2 = cs.get_segment_coordinates(cseg2)
                     p, q = line1
                     r, s = line2
                     ccw = geotool.ccw(q, p, r) if p == s else geotool.ccw(p, q, s)
                     if ccw == 0:  # If collinear
-                        intersections.append((seg_id, seg_id2))
+                        intersections.append((cseg1, cseg2))
                     continue
-                if cs.is_deleted_segment(seg_id2):
+                if cs.is_deleted_segment(cseg2):
                     continue
-                if cs.is_sharing_chain_with_neighbour(seg_id, seg_id2):
+                if cs.is_sharing_chain_with_neighbour(cseg1, cseg2):
                     continue
                 # don't compare 2 segments twice or a segment with itself
-                if seg_id > seg_id2 or cs.is_original_segment(seg_id2):
-                    line2 = cs.get_segment_coordinates(seg_id2)
+                if cseg1 > cseg2 or cs.is_original_segment(cseg2):
+                    line2 = cs.get_segment_coordinates(cseg2)
                     if geotool.crosses(line1, line2, endpoint_intersects=True) and not self.is_connected_by_junction(line1, line2, tolerance=self.constraint_use_topology_snap_precision):
                         if debug:
-                            print "INTERSECTION:", seg_id, seg_id2
-                        intersections.append((seg_id, seg_id2))
+                            print "INTERSECTION:", cs.segments[cseg1.idx], cs.segments[cseg2.idx]
+                        intersections.append((cseg1, cseg2))
         if debug:
             print "Find intersections time = %.2f" % (time.time() - t)
             print len(intersections), "intersections found"
 
         # apply SD heuristic
-        for (segA_id, segB_id) in intersections:
+        for (csega, csegb) in intersections:
             if debug:
-                print "fix int:", segA_id, segB_id
-            sa = cs.segments[segA_id[0]]
-            sb = cs.segments[segB_id[0]]
+                print "fix int:", csega, csegb
 
-            lineA = cs.get_segment_coordinates(segA_id)
-            lineB = cs.get_segment_coordinates(segB_id)
+            lineA = cs.get_segment_coordinates(csega)
+            lineB = cs.get_segment_coordinates(csegb)
 
-            if sa is None or sb is None:  # If this intersection was fixed in a previously iteration
+            if cs.is_deleted_segment(csega) or cs.is_deleted_segment(csegb):
+                # If this intersection was fixed in a previously iteration
                 if debug:
-                    print "Skip %s %s" % (sa, sb)
+                    print "Skip %s %s" % (csega, csegb)
                 continue
 
             if debug:
@@ -862,15 +844,15 @@ class ChainDB(object):
             # select the segment s that has an odd number of crossings with the spanning (original) chain C(s').
             # s is an original segment (no points in C(s) were removed)
             # One can prove that exactly one of {s, s'} has an odd number of crossings with the other's spanning chain.
-            Ca = cs.get_segment_original_chain_coordinates(segA_id)
-            Cb = cs.get_segment_original_chain_coordinates(segB_id)
+            Ca = cs.get_segment_original_chain_coordinates(csega)
+            Cb = cs.get_segment_original_chain_coordinates(csegb)
             crossings_a = geotool.count_line_chain_crossings(lineA, Cb)
             crossings_b = geotool.count_line_chain_crossings(lineB, Ca)
 
             if crossings_a%2 == 1:
-                C, Cp, s, sp, lineS, lineSP = Ca, Cb, sa, sb, lineA, lineB
+                C, Cp, cseg0, csegp, lineS, lineSP = Ca, Cb, csega, csegb, lineA, lineB
             else:
-                C, Cp, s, sp, lineS, lineSP = Cb, Ca, sb, sa, lineB, lineA
+                C, Cp, cseg0, csegp, lineS, lineSP = Cb, Ca, csegb, csega, lineB, lineA
 
             if crossings_a == crossings_b == 0:
                 if debug:
@@ -885,12 +867,12 @@ class ChainDB(object):
             if len(C) == 2:
                 if len(Cp) > 2:
                     C, Cp = Cp, C
-                    s, sp = sp, s
+                    cseg0, csegp = csegp, cseg0
                     lineS, lineSP = lineSP, lineS
                 else:
                     # never check this again. intersection can't be fixed
                     if debug:
-                        print "Unfixable %s %s" % (sa, sb)
+                        print "Unfixable %s %s" % (csega, csegb)
                     continue
 
             # Construct detour graph, G(s), corresponding to s.
@@ -916,14 +898,13 @@ class ChainDB(object):
 
             if shortest_path is not None:
                 if debug:
-                    print "Fix SGD %s %s" % (sa[ChainsSegment.SEGMENT_SEGID],
-                                             sb[ChainsSegment.SEGMENT_SEGID])
+                    print "Fix SGD %s %s" % (csega, csegb)
                     print "shortest path:", shortest_path
-                cs.recover_chain_points(s[ChainsSegment.SEGMENT_SEGID], shortest_path)
+                cs.recover_chain_points(cseg0, shortest_path)
                 repaired = True
             else:
                 if debug:
-                    print "Fix Rand %s %s" % (sa, sb)
+                    print "Fix Rand %s %s" % (csega, csegb)
                 # Shortest path not found. Select random vertex from C(s) and C(s')
                 # Instead of random, we select the vertex in the middle(array length) of each chain.
                 # if debug:
@@ -933,10 +914,10 @@ class ChainDB(object):
                 Cpn = len(Cp)
                 # TODO: dont recover a point which create a intersection!
                 if Cn > 2:
-                    cs.recover_chain_points(s[ChainsSegment.SEGMENT_SEGID], [0, Cn/2, Cn-1])
+                    cs.recover_chain_points(cseg0, [0, Cn/2, Cn-1])
                     repaired = True
                 if Cpn > 2:
-                    cs.recover_chain_points(sp[ChainsSegment.SEGMENT_SEGID], [0, Cpn/2, Cpn-1])
+                    cs.recover_chain_points(csegp, [0, Cpn/2, Cpn-1])
                     repaired = True
         return repaired
 
