@@ -109,11 +109,13 @@ class TestCaseGeometry(unittest.TestCase):
     def save_shapefile(self, path, name, geom_wkb_dict, gtype=ogr.wkbMultiPolygon):
         """ Save a collection of geometries to a shapefile in [path].
         :param geom_wkb_dict: dict (key, value) = (identifier, wkb (binary string))"""
-        os.popen("mkdir -p {}".format(path))
+        shapefile_dir = os.path.join(path, name)
+        os.popen("rm -rf {}".format(shapefile_dir))
+        os.popen("mkdir -p {}".format(shapefile_dir))
 
         # Now convert it to a shapefile with OGR
         driver = ogr.GetDriverByName('Esri Shapefile')
-        ds = driver.CreateDataSource(os.path.join(path, '{}.shp'.format(name)))
+        ds = driver.CreateDataSource(os.path.join(shapefile_dir, '{}.shp'.format(name)))
         layer = ds.CreateLayer('', None, gtype)
 
         # Add one attribute
