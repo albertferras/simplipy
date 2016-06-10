@@ -81,7 +81,7 @@ class ChainsSegment(object):
             for (c, chain) in enumerate(self.chains):
                 if chain is None:
                     continue
-                points = iter(chain[ChainDB.CHAIN_POINTS])
+                points = iter(chain.points)
                 last = next(points)[P_COORD]
                 for p in points:
                     p = p[P_COORD]
@@ -105,7 +105,7 @@ class ChainsSegment(object):
         for (c, chain) in enumerate(self.chains):
             if chain is None:
                 continue
-            points = chain[ChainDB.CHAIN_POINTS]
+            points = chain.points
             first = None
             last = None
             is_closed = is_closed_chain(points)
@@ -153,10 +153,10 @@ class ChainsSegment(object):
         self.segments.append(segment)
 
     def get_chain_parent(self, chain_idx):
-        return self.chains[chain_idx][ChainDB.CHAIN_PARENTS]
+        return self.chains[chain_idx].parents
 
     def get_chain_points(self, chain_idx):
-        return self.chains[chain_idx][ChainDB.CHAIN_POINTS]
+        return self.chains[chain_idx].points
 
     def get_segment_original_chain_coordinates(self, seg_id):
         chain_idx = seg_id[self.SEGID_CHAIN]
@@ -189,7 +189,7 @@ class ChainsSegment(object):
         c2 = seg_id2[self.SEGID_CHAIN]
 
         chain1 = self.chains[c1]
-        parents1 = chain1[ChainDB.CHAIN_PARENTS]
+        parents1 = chain1.parents
         return c1 == c2 and len(parents1) != 1
 
     def is_deleted_segment(self, seg_id):
@@ -237,6 +237,9 @@ class JunctionPoints(object):
 
 CGeometry = namedtuple('CGeometry', ['type', 'parent', 'children'])
 
+CChain = namedtuple('CChain', ['parents', 'points'])
+# a chain can have 1 or 2 parents (shared polygons). 1st parent has DIRECTION_NORMAL and 2nd DIRECTION_REVERSE
+
 
 class ChainDB(object):
     KEY_SUBGEOMETRY = object()
@@ -246,9 +249,6 @@ class ChainDB(object):
     STARTING_POINT_DIAMETERPOINTS = "diameterpoints"
     # Stores all geometry hierarchy (multipolygon->polygon->linearring->ring...) in a way
     # that we can access all chains in a quick way
-
-    CHAIN_PARENTS = 0  # a chain can have 1 or 2 parents (shared polygons). 1st parent has DIRECTION_NORMAL and 2nd DIRECTION_REVERSE
-    CHAIN_POINTS = 1
 
     def __init__(self):
         self.keys = {}          # (geom index, chain index)
@@ -336,16 +336,14 @@ class ChainDB(object):
             for chain_id in self.get_chains_by_geom(geom_idx):
                 chain = self.chains[chain_id]
                 if chain is not None:
-                    points = chain[self.CHAIN_POINTS]
-
-                    is_shared_chain = len(chain[self.CHAIN_PARENTS]) > 1
+                    is_shared_chain = len(chain.parents) > 1
                     if (is_shared_chain and skip_shared_chains) or (not is_shared_chain and skip_non_shared_chains):
                         continue
 
                     # if (self.constraint_use_topology is False
-                    #     or (self.constraint_shared_edges and len(chain[self.CHAIN_PARENTS]) > 1)
-                    #     or (self.constraint_non_shared_edges and len(chain[self.CHAIN_PARENTS]) == 1)):
-                    simplifier(points, **kwargs)
+                    #     or (self.constraint_shared_edges and len(chain.parents) > 1)
+                    #     or (self.constraint_non_shared_edges and len(chain.parents) == 1)):
+                    simplifier(chain.points, **kwargs)
 
         # 1.a - linearrings must have 4 points atleast (3 distinct)
         #     - linestring must have 2 distinct points atleast
@@ -402,7 +400,7 @@ class ChainDB(object):
 
     def chain_shares_edges(self, chain_idx):
         chain = self.chains[chain_idx]
-        return len(chain[self.CHAIN_PARENTS]) > 1
+        return len(chain.parents) > 1
 
     def print_geoms(self):
         print "Geometries:"
@@ -420,10 +418,10 @@ class ChainDB(object):
             if chain is None:
                 print c, "->", "DELETED"
             else:
-                points = chain[self.CHAIN_POINTS]
+                points = chain.points
                 is_closed = is_closed_chain(points)
                 msg = "(closed)" if is_closed else ""
-                print c, "->", chain[self.CHAIN_PARENTS], ":", id(points), len(points), "points", msg
+                print c, "->", chain.parents, ":", id(points), len(points), "points", msg
                 if show_points:
                     tab = "              "
                     i = 0
@@ -456,7 +454,7 @@ class ChainDB(object):
         # 1 - Map points
         point_map = {}  # may crash memory
         for (c, chain) in enumerate(self.chains):
-            for point in chain[self.CHAIN_POINTS]:
+            for point in chain.points:
                 key = point_key2(point, K)
                 geoms = point_map.get(key)
                 if geoms is None:
@@ -466,10 +464,9 @@ class ChainDB(object):
 
         # 2 - Detect junctions
         for (c, chain) in enumerate(self.chains):
-            points = chain[self.CHAIN_POINTS]
-            last_key = point_key2(points[0], K)
+            last_key = point_key2(chain.points[0], K)
             last_group = point_map.get(last_key)
-            for p in points[1:]:
+            for p in chain.points[1:]:
                 key = point_key2(p, K)
                 group = point_map.get(key)
                 if group != last_group:
@@ -498,7 +495,7 @@ class ChainDB(object):
                 for chain_idx2 in chain_idxs_marked:
                     # verify that it's the same chain
                     p1 = chain_points
-                    p2 = self.chains[chain_idx2][self.CHAIN_POINTS]
+                    p2 = self.chains[chain_idx2].points
 
                     if point_key2(p1[0], K) != point_key2(p2[0], K) or point_key2(p1[-1], K) != point_key2(p2[-1], K):
                         raise Exception("this cant happen (j2j)")
@@ -528,14 +525,13 @@ class ChainDB(object):
             chain_created = False
             for c in geom_chains:
                 if debug:
-                    print "CHAIN %s (parent=%s)" % (c, self.chains[c][self.CHAIN_PARENTS])
+                    print "CHAIN %s (parent=%s)" % (c, self.chains[c].parents)
                     tab = "    "
                 disable_chain = True
                 chain = self.chains[c]
-                parents = chain[self.CHAIN_PARENTS]
-                if len(parents) != 1:
+                if len(chain.parents) != 1:
                     raise Exception("expecting parents size = 1!?")
-                points = chain[self.CHAIN_POINTS]
+                points = chain.points
                 start_key = point_key2(points[0], K)
 
                 i = 0
@@ -555,7 +551,7 @@ class ChainDB(object):
 
                         # check if junction to junction A->B->A
                         if chain_idx2 is not None:
-                            if self.chains[chain_idx2][self.CHAIN_PARENTS] == self.chains[c][self.CHAIN_PARENTS]:
+                            if self.chains[chain_idx2].parents == self.chains[c].parents:
                                 chain_idx2 = None
 
                         if chain_idx2 is None:
@@ -570,19 +566,19 @@ class ChainDB(object):
                                 chain_created = True
                                 # create new chain
                                 chain_idx2 = len(self.chains)
-                                self.chains.append(([parents[0]], subchain))
+                                self.chains.append(CChain(parents=[chain.parents[0]], points=subchain))
                                 dbg = "new"
                             mark_junction_to_junction_chain(start_key, key, chain_idx2)
                         else:
                             chain_created = True
                             # two chains from distinct polygons will share the memory space
-                            # subchain = self.chains[chain_idx2][self.CHAIN_POINTS]
+                            # subchain = self.chains[chain_idx2].points
                             dbg = "reused %s" % chain_idx2
 
-                            self.chains[chain_idx2][self.CHAIN_PARENTS].append(parents[0])
+                            self.chains[chain_idx2].parents.append(chain.parents[0])
 
                             # chain_idx2 = len(self.chains)
-                            # self.chains.append((chain[self.CHAIN_PARENTS], direction, subchain))
+                            # self.chains.append(CChain(parents=chain.parents, points=subchain))
                             # Subchain already saved
                         new_chain_indexes.append(chain_idx2)
                         if debug:
@@ -596,8 +592,7 @@ class ChainDB(object):
                 print "geom new chains=%s" % new_chain_indexes
 
             if len(new_chain_indexes) > 0:
-                parents = chain[self.CHAIN_PARENTS]
-                for parent_geom_idx in parents:
+                for parent_geom_idx in chain.parents:
                     parent_cgeom = self.geometries[parent_geom_idx]
                     self.geometries[parent_geom_idx] = CGeometry(type=parent_cgeom.type,
                                                                  parent=parent_cgeom.parent,
@@ -679,10 +674,10 @@ class ChainDB(object):
         last_p = None
         for chain_id in chain_ids:
             chain = self.chains[chain_id]
-            points = chain[self.CHAIN_POINTS]
+            points = chain.points
 
             # If chain is stored in reverse order (multiple parents, shared edges)
-            parents = chain[self.CHAIN_PARENTS]
+            parents = chain.parents
             if len(parents) == 2 and parents[1] == geom_idx:
                 points = reversed(points)
             else:
@@ -981,13 +976,13 @@ class ChainDB(object):
                     children.append(c)
             elif geometry.type == 'LinearRing':
                 children = []
-                chain_data = ([geom_idx], to_points_data(geometry, kwargs['is_exterior']))
+                chain_data = CChain(parents=[geom_idx], points=to_points_data(geometry, kwargs['is_exterior']))
                 self.chains.append(chain_data)
                 c = len(self.chains)-1
                 children.append(c)
             elif geometry.type == "LineString":
                 children = []
-                chain_data = ([geom_idx], to_points_data(geometry, is_exterior=False))
+                chain_data = CChain(parents=[geom_idx], points=to_points_data(geometry, is_exterior=False))
                 self.chains.append(chain_data)
                 c = len(self.chains)-1
                 children.append(c)
@@ -1046,8 +1041,8 @@ class ChainDB(object):
         geom = self.geometries[geom_idx]
 
         # Check if line is a closed chain
-        first_point = self.chains[chains[0]][self.CHAIN_POINTS][0]
-        last_point = self.chains[chains[-1]][self.CHAIN_POINTS][-1]
+        first_point = self.chains[chains[0]].points[0]
+        last_point = self.chains[chains[-1]].points[-1]
         closed_chain = (first_point[P_COORD] == last_point[P_COORD])
 
         # Get all points of the ring
@@ -1101,8 +1096,7 @@ class ChainDB(object):
                 # This will flag [recover_points] points
                 cnt = delta / 2  # start counting at [delta/2] to unflag middle points
                 for chain_id in chains:
-                    points = self.chains[chain_id][self.CHAIN_POINTS]
-                    for p in points:
+                    for p in self.chains[chain_id].points:
                         if not p[P_REMOVED]:
                             continue
                         cnt += 1
@@ -1118,7 +1112,7 @@ class ChainDB(object):
 
         # Get all points of the ring
         for chain_id in chains:
-            points = self.chains[chain_id][self.CHAIN_POINTS]
+            points = self.chains[chain_id].points
             chain_size = len(filter(lambda p: p[P_REMOVED] is False, points))
             num_points += chain_size
 
@@ -1129,15 +1123,14 @@ class ChainDB(object):
                 # use visvalingam to simplify the whole ring
                 pointsdata_list = []
                 for chain_id in chains:
-                    pointsdata_list.extend(self.chains[chain_id][self.CHAIN_POINTS])
+                    pointsdata_list.extend(self.chains[chain_id].points)
                 for p in pointsdata_list:
                     p[P_REMOVED] = False
                 visvalingam(pointsdata_list, minArea=99999, ring_min_points=min_points)
             elif num_points < min_points:
                 # Recover "random" point
                 for chain_id in chains:
-                    points = self.chains[chain_id][self.CHAIN_POINTS]
-                    for p in points:
+                    for p in self.chains[chain_id].points:
                         if p[P_REMOVED] is True:
                             p[P_REMOVED] = False
                             num_points += 1
@@ -1268,15 +1261,16 @@ class ChainDB(object):
         # Geometry is made of 1 or more chains
         for c in children:
             chain = self.chains[c]
-            points = chain[self.CHAIN_POINTS]
+            points = chain.points
 
             # Direction?
             # A chain can be shared between 1 or 2 distinct geometries.
             # By definition, the order of points is reversed for the second parent.
-            # (TODO: implement sharing chain on overlapping polygons -> chain could be shared between more than 2 geoms)
-            if chain[self.CHAIN_PARENTS][0] == geom_idx:
+            # (TODO: implement sharing chain on overlapping polygons -> chain could be shared between more than 2 geoms
+            # if one polygon is inside the other)
+            if chain.parents[0] == geom_idx:
                 direction = DIRECTION_NORMAL
-            elif chain[self.CHAIN_PARENTS][1] == geom_idx:
+            elif chain.parents[1] == geom_idx:
                 direction = DIRECTION_REVERSE
             else:
                 # Parent points to chain c as a children. But geom_idx is not in chain c parents. Impossible
