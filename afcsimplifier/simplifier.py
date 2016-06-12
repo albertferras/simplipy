@@ -815,7 +815,12 @@ class ChainDB(object):
                 # don't compare 2 segments twice or a segment with itself
                 if cseg1 > cseg2 or cs.is_original_segment(cseg2):
                     line2 = cs.get_segment_coordinates(cseg2)
-                    if geotool.crosses(line1, line2, endpoint_intersects=True) and not self.is_connected_by_junction(line1, line2, tolerance=self.constraint_use_topology_snap_precision):
+
+                    (x1, y1), (x2, y2) = line1
+                    (u1, v1), (u2, v2) = line2
+
+                    if geotool.crosses(x1, y1, x2, y2, u1, v1, u2, v2, endpoint_intersects=True) \
+                            and not self.is_connected_by_junction(line1, line2, tolerance=self.constraint_use_topology_snap_precision):
                         if debug:
                             print "INTERSECTION:", cs.segments[cseg1.idx], cs.segments[cseg2.idx]
                         intersections.append((cseg1, cseg2))

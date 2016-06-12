@@ -5,6 +5,14 @@ Created on Sep 6, 2013
 '''
 import math
 
+try:
+    from geotool_c import crosses
+    print "using C"
+except:
+    from geotool_py import crosses
+    print "using PY"
+
+
 _logger = None
 
 
@@ -47,45 +55,6 @@ def perpendicular_qdistance(p, a, b):
 
 def perpendicular_distance(p, a, b):
     return math.sqrt(perpendicular_qdistance(p, a, b))
-
-
-def same_point(p, q):
-    return near(p[0], q[0]) and near(p[1], q[1])
-
-
-def crosses(line1, line2, endpoint_intersects=True):
-    """
-    Return True if line segment line1 intersects line segment line2 and
-    line1 and line2 are not parallel.
-    """
-    (x1, y1), (x2, y2) = line1
-    (u1, v1), (u2, v2) = line2
-    
-    if (same_point((x1, y1), (u1, v1))
-            or same_point((x1, y1), (u2, v2))
-            or same_point((x2, y2), (u1, v1))
-            or same_point((x2, y2), (u2, v2))):
-        return endpoint_intersects
-
-    (a, b), (c, d) = (x2-x1, u1-u2), (y2-y1, v1-v2)
-    e, f = u1-x1, v1-y1
-    denom = float(a*d - b*c)
-    if near(denom, 0):
-        # parallel
-        return False
-    else:
-        t = (e*d - b*f)/denom
-        s = (a*f - e*c)/denom
-        # When 0<=t<=1 and 0<=s<=1 the point of intersection occurs within the
-        # line segments
-        if not endpoint_intersects:
-            return 0 < t < 1 and 0 < s < 1
-        else:
-            return 0 <= t <= 1 and 0 <= s <= 1
-        
-
-def near(a, b, atol=1e-8):
-    return abs(a-b) < atol
 
 
 def get_furthest_point(p, point_list):
@@ -261,10 +230,14 @@ def arc_intersection(a, b, c, d):
 
 def filter_edges_crossing_line(G, C, line):
     # filter edges in graph G that intersects line
+    (u1, v1), (u2, v2) = line
+
     i_list = G.keys()
     for i in i_list:
         j_list = G[i]
-        j_list = filter(lambda j: not crosses((C[i], C[j]), line, endpoint_intersects=True), j_list)
+
+        x1, y1 = C[i]
+        j_list = filter(lambda j: not crosses(x1, y1, C[j][0], C[j][1], u1, v1, u2, v2, endpoint_intersects=True), j_list)
         if len(j_list) == 0:
             G.pop(i)
         else:
@@ -303,12 +276,17 @@ def compute_allowed_shortcuts(C, epsilon):
 
 def count_line_chain_crossings(line, chain):
     # count how many times the line(segment) crosses chain(list of segments)
+    (x1, y1), (x2, y2) = line
+
     n = 0
     last_side = None
     for i in range(len(chain)-1):
         line2 = (chain[i], chain[i+1])
         side = ccw_norm(line[0], line[1], chain[i+1])
-        if crosses(line, line2, endpoint_intersects=True) \
+
+        (u1, v1), (u2, v2) = line2
+
+        if crosses(x1, y1, x2, y2, u1, v1, u2, v2, endpoint_intersects=True) \
                 and (0 != last_side != side != 0 or (last_side is None and side == -1)):
             n += 1
         if side != 0:

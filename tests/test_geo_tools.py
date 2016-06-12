@@ -2,8 +2,14 @@
 # -*- coding: utf-8 -*-
 
 import unittest
+import random
 from afcsimplifier.geotool import distance, qdistance
+from afcsimplifier.geotool_py import crosses as crosses_py
+from afcsimplifier.geotool_c import crosses as crosses_c
 
+
+def rand_point():
+    return (random.random(), random.random())
 
 class TestGeoTool(unittest.TestCase):
     def test_distance(self):
@@ -20,6 +26,29 @@ class TestGeoTool(unittest.TestCase):
             qdist = qdistance(p1, p2)
             self.assertAlmostEqual(dist, expected_distance)
             self.assertAlmostEqual(dist ** 2, qdist)
+
+    def _test_crosses(self, x1, y1, x2, y2, u1, v1, u2, v2, endpoint_intersects):
+        c = crosses_c(x1, y1, x2, y2, u1, v1, u2, v2, endpoint_intersects=endpoint_intersects)
+        py = crosses_py(x1, y1, x2, y2, u1, v1, u2, v2, endpoint_intersects=endpoint_intersects)
+        if c != py:
+            print "Fail for parameters:"
+            print x1, y1, x2, y2, u1, v1, u2, v2
+            self.fail("C and PY implementation return distinct results (C=%s, PY=%s)" % (c, py))
+
+    def test_crosses(self):
+        random.seed(0)
+        for endpoint_intersects in (True, False):
+            for case in xrange(50000):
+                # print "------------"
+                x1, y1 = rand_point()
+                x2, y2 = rand_point()
+                u1, v1 = rand_point()
+                u2, v2 = rand_point()
+                self._test_crosses(x1, y1, x2, y2, u1, v1, u2, v2, endpoint_intersects)
+
+                self._test_crosses(x1, y1, x2, y2, x1, y1+1e-8, u2, v2, endpoint_intersects)
+
+
 
 
 if __name__ == "__main__":
