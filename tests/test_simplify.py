@@ -132,10 +132,8 @@ class TestSimplifier(TestCaseGeometry):
         simplifier = douglaspeucker
         simplifier_params = dict(epsilon=0.1)
         constraints = dict(repair_intersections=True)
-        simp_geometries = self._test_geometry_simplification(geometries, simplifier, simplifier_params, constraints,
-                                                             check_valid=True, check_simple=True)
-        for key in geometries.keys():
-            self.assertSmallerGeometries(geometries[key], simp_geometries[key], 0.2, 0.8)
+        self._test_geometry_simplification(geometries, simplifier, simplifier_params, constraints,
+                                           check_valid=True, check_simple=True)
 
     def test_repair_intersections_with_topology(self):
         geometries = load_shapefile(data_path('naturalearth_nations/ne_10m_admin_0_countries.shp'),
