@@ -82,7 +82,7 @@ class ChainsSegment(object):
                 for p in points:
                     p = p[P_COORD]
                     if last != p:
-                        dist = geotool.distance(p, last)
+                        dist = geotool.distance(p[0], p[1], last[0], last[1])
                         distances.append(dist)
                         if len(distances) > max_sample_size:
                             break

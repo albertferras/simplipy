@@ -5,7 +5,6 @@ import unittest
 import os
 import ogr
 import shapely.wkb
-from afcsimplifier.geotool import distance, qdistance
 from afcsimplifier.simplifier import ChainDB
 from afcsimplifier.douglaspeucker import douglaspeucker
 from utils import TestCaseGeometry, load_wkt, load_shapefile
