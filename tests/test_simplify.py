@@ -51,6 +51,7 @@ class TestSimplifier(TestCaseGeometry):
             except AssertionError:
                 print "Failed on geometry id={}".format(gid)
                 raise
+        #self.save_shapefile(data_path('test'), 'simp', simp_geometries)
         if constraints.get('prevent_shape_removal') is True:
             self.assertEquals(len(geometries_removed), 0,
                               msg="Expected 0 geometries removed, but disapparead: {}"
@@ -80,7 +81,7 @@ class TestSimplifier(TestCaseGeometry):
 
         simplifier = douglaspeucker
         simplifier_params = dict(epsilon=0.1)
-        self.save_shapefile(data_path('test'), 'orig', geometries)
+        #self.save_shapefile(data_path('test'), 'orig', geometries)
         for mode in ["Expand", "Contract"]:
             print "*"*100, mode
             constraints = dict(expandcontract=mode,
@@ -118,14 +119,55 @@ class TestSimplifier(TestCaseGeometry):
                     print "Failed on geometry id={}".format(key)
                     raise
 
+    def assertSmallerGeometries(self, geometry, simp_geometry, threshold_min, threshold_max):
+        size_orig = len(geometry)
+        size_simp = len(simp_geometry)
+        reduction = size_simp / float(size_orig)
+        if not threshold_min <= reduction <= threshold_max:
+            self.fail("Geometry's original size is %s and simplified size is %s. Expected %s-%s diff but got %s"
+                      % (size_orig, size_simp, threshold_min, threshold_max, reduction))
+
     def test_repair_intersections(self):
         geometries = load_shapefile(data_path('naturalearth_nations/ne_10m_admin_0_countries.shp'),
-                                    geom_key='ISO_A2')
+                                    geom_key='ADM0_A3')
         simplifier = douglaspeucker
         simplifier_params = dict(epsilon=0.1)
         constraints = dict(repair_intersections=True)
-        self._test_geometry_simplification(geometries, simplifier, simplifier_params, constraints,
-                                           check_valid=True, check_simple=True)
+        simp_geometries = self._test_geometry_simplification(geometries, simplifier, simplifier_params, constraints,
+                                                             check_valid=True, check_simple=True)
+        for key in geometries.keys():
+            self.assertSmallerGeometries(geometries[key], simp_geometries[key], 0.2, 0.8)
+
+    def test_repair_intersections_with_topology(self):
+        geometries = load_shapefile(data_path('naturalearth_nations/ne_10m_admin_0_countries.shp'),
+                                    geom_key='ADM0_A3')
+        geometries = {i:g for i,g in geometries.iteritems() if i.split(":")[-1] in ["FRA", "ESP", "AND"]}
+
+        simplifier = douglaspeucker
+        simplifier_params = dict(epsilon=0.1)
+        for simplify_shared_edges in (False, True):
+            for simplify_non_shared_edges in (False, True):
+                constraints = dict(repair_intersections=True,
+                                   use_topology_snap_precision=0.0001,
+                                   use_topology=True,
+                                   simplify_shared_edges=simplify_shared_edges,
+                                   simplify_non_shared_edges=simplify_non_shared_edges,
+                                   )
+                simp_geometries = self._test_geometry_simplification(geometries, simplifier, simplifier_params, constraints,
+                                                                     check_valid=True, check_simple=True)
+                for key in geometries.keys():
+                    thresholds = 1.0, 1.0
+                    if key.endswith("AND"):
+                        if simplify_shared_edges:  # andorra is all shared frontier
+                            thresholds = 0.01, 0.8
+                    else:
+                        if not simplify_non_shared_edges and simplify_shared_edges:
+                            thresholds = 0.8, 1.0   # only spain-andorra-france frontier can be simplified
+                        if simplify_non_shared_edges and simplify_shared_edges:
+                            thresholds = 0.01, 0.5  # everything simplified
+                        if simplify_non_shared_edges and not simplify_shared_edges:
+                            thresholds = 0.01, 0.7  # everything except spain-adorra-france frontier
+                    self.assertSmallerGeometries(geometries[key], simp_geometries[key], *thresholds)
 
     def test_line_first_and_last_segment_intersects_after_simplify(self):
         line_geom = load_wkt(data_path('line1.wkt'))

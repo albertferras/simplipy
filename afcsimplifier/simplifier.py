@@ -316,9 +316,9 @@ class ChainDB(object):
             if self.constraint_expandcontract is not None:
                 # A shared chain can never be simplified by expansion or contraction
                 skip_shared_chains = True
-            if self.constraint_repair_intersections:
+            if self.constraint_repair_intersections and not self.constraint_use_topology:
                 # A shared chain simplification will always be repaired because they always will have intersections
-                # with other geometries
+                # with other geometries. But only when not preserving topology!
                 skip_shared_chains = True
 
         for key in keys:
@@ -775,7 +775,7 @@ class ChainDB(object):
         return repaired
 
     def _repair_intersections(self, cs, iter_k, epsilon, debug=False):
-        # debug = True
+        debug = False
         if debug:
             print "repair:", iter_k, epsilon
         # returns true if a point was recovered, false otherwise
