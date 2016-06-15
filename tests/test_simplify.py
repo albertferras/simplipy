@@ -5,8 +5,8 @@ import unittest
 import os
 import ogr
 import shapely.wkb
-from afcsimplifier.simplifier import ChainDB
-from afcsimplifier.douglaspeucker import douglaspeucker
+from simplipy.simplifier import ChainDB
+from simplipy.douglaspeucker import douglaspeucker
 from utils import TestCaseGeometry, load_wkt, load_shapefile
 
 data_dir = os.path.join(os.path.dirname(__file__), 'data')

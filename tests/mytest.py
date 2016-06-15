@@ -1,8 +1,8 @@
 #!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
 
-from afcsimplifier.douglaspeucker import douglaspeucker
-from afcsimplifier.simplifier import ChainDB
+from simplipy.douglaspeucker import douglaspeucker
+from simplipy.simplifier import ChainDB
 from utils import load_shapefile
 from test_simplify import data_path
 

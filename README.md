@@ -12,8 +12,32 @@ A tool to simplify your geometries with more advanced options:
 - Prevent shape removal
 - Simplify only parts of a geometry
 
-This is a plug-in for qgis which allows you to do all of this in a friendly interface.
-You can also use 'afcsimplifier/simplifier.py' to simplify your geometries from your python scripts without any qgis dependency.
+This is a plug-in for qgis which allows you to do all of this in a friendly interface AND a python package.
+
+SimpliPy also comes with an optional C extension which is installed when Cython is available in the system. See requirements.txt
+Using an installed version of SimpliPy with the C extension can make simplipy >2x faster.
+
+
+QGIS plugin
+-----------
+SimpliPy qgis plugin can be installed from inside QGIS plugin manager.
+Unfortunately, C extensions are not compiled by QGIS plugin installer so the version installed by QGIS will run
+with the plain-python simplipy, which will make it not run as faster as with C extension.
+
+(Linux)
+You can manually copy the dist-packages/simplipy/geotool_c.so file to ~/.qgis2/python/plugins/simplipy/simplipy/
+and SimpliPy qgis plugin will find it and use it.
+TODO: Find a way to make qgis plugin use the installed python package when available, instead of the package
+in plugin's simplipy directory.
+
+
+Python Package
+--------------
+You can also use simplipy as a python package by installing as follows:
+``python setup.py install``
+or
+``pip install -r requirements.txt
+pip install .``
 
 
 Comparison

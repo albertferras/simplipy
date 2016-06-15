@@ -4,7 +4,7 @@
 import math
 import unittest
 import random
-from afcsimplifier.grid import Grid, boxid_raytrace
+from simplipy.grid import Grid, boxid_raytrace
 
 # Pairs of segment that intersect
 PAIR_SEGMENT_INT = [[((-74.394520637, -51.122247003), (-74.495432095, -51.049248956)),

@@ -28,9 +28,9 @@ from qgis.core import *
 import resources_rc
 # Import the code for the dialog
 from simplipydialog import simplipyDialog
-from afcsimplifier.simplifier import ChainDB
-from afcsimplifier.douglaspeucker import douglaspeucker
-from afcsimplifier.visvalingam import visvalingam
+from simplipy.simplifier import ChainDB
+from simplipy.douglaspeucker import douglaspeucker
+from simplipy.visvalingam import visvalingam
 import ConfigParser
 import StringIO
 import os.path
@@ -112,7 +112,7 @@ OUTPUT_NEWLAYER_HIDDEN = 2
 #OUTPUT_ATTRIBUTE = 3 # disabled
 
 
-class simplipy:
+class qgissimplipy:
 
     def __init__(self, iface):
         # Save reference to the QGIS interface
@@ -768,6 +768,9 @@ class SimplifyThread(WorkerThread):
             for key in self.progress_iter(features.keys()):
                 # get wkb
                 wkb = cdb.to_wkb(key)
+                if wkb is None:
+                    # Feature over-simplified and disappeared
+                    continue
 
                 # create feature
                 f = QgsFeature()

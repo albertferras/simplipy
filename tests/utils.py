@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-from afcsimplifier.simplifier import ChainDB
-from afcsimplifier.douglaspeucker import douglaspeucker
+from simplipy.simplifier import ChainDB
+from simplipy.douglaspeucker import douglaspeucker
 import shapely.wkt
 import shapely.wkb
 import shapely.validation
@@ -42,7 +42,7 @@ class TestCaseGeometry(unittest.TestCase):
     """
 
     def simplify_geometries(self, geom_wkb_dict, simplifier, simplifier_params, constraints):
-        """ Simplify a collection of geometries using afcsimplifier and a specific simplifier algorithm and constraints.
+        """ Simplify a collection of geometries using simplipy and a specific simplifier algorithm and constraints.
         :param geom_wkb_dict: dict (key, value) = (identifier, wkb (binary string))
         :param simplifier: simplify algorithm function (eg. douglaspeucker, visvalingam)
         :param simplifier_params: algorithm simplifier parameters (eg. for douglaspeucker, {'epsilon': 0.3})

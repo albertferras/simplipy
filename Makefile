@@ -25,7 +25,7 @@ QGISDIR=.qgis2
 # Makefile for a PyQGIS plugin 
 
 # translation
-SOURCES = simplipy.py ui_simplipy.py __init__.py simplipydialog.py
+SOURCES = qgissimplipy.py ui_simplipy.py __init__.py simplipydialog.py
 #TRANSLATIONS = i18n/simplipy_en.ts
 TRANSLATIONS = 
 
@@ -33,7 +33,7 @@ TRANSLATIONS =
 
 PLUGINNAME = simplipy
 
-PY_FILES = simplipy.py simplipydialog.py __init__.py
+PY_FILES = qgissimplipy.py simplipydialog.py __init__.py
 
 EXTRAS = simplipy.png metadata.txt
 
@@ -41,7 +41,7 @@ UI_FILES = ui_simplipy.py
 
 RESOURCE_FILES = resources_rc.py
 
-AFCSIMPLIFIER = afcsimplifier
+PYPACKAGEDIR = simplipy
 
 default: compile
 
@@ -65,7 +65,9 @@ deploy: compile transcompile
 	cp -vf $(UI_FILES) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
 	cp -vf $(RESOURCE_FILES) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
 	cp -vf $(EXTRAS) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -rvf $(AFCSIMPLIFIER) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
+	cp -rvf $(PYPACKAGEDIR) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
+	rm -rf $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)/*.pyc
+	rm -rf $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)/*/*.pyc
 
 # The dclean target removes compiled python files from plugin directory
 # also delets any .svn entry

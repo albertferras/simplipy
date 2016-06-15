@@ -4,11 +4,11 @@
 import unittest
 import random
 import copy
-from afcsimplifier.geotool import distance, qdistance
-from afcsimplifier.geotool_py import (crosses as crosses_py,
-    compute_allowed_shortcuts as compute_allowed_shortcuts_py)
-from afcsimplifier.geotool_c import (crosses as crosses_c,
-    compute_allowed_shortcuts as compute_allowed_shortcuts_c)
+from simplipy.geotool import distance, qdistance
+from simplipy.geotool_py import (crosses as crosses_py,
+                                 compute_allowed_shortcuts as compute_allowed_shortcuts_py)
+from simplipy.geotool_c import (crosses as crosses_c,
+                                compute_allowed_shortcuts as compute_allowed_shortcuts_c)
 
 
 def rand_point():
