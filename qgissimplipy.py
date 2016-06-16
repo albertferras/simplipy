@@ -28,15 +28,15 @@ from qgis.core import *
 import resources_rc
 # Import the code for the dialog
 from simplipydialog import simplipyDialog
-from simplipy.simplifier import ChainDB
-from simplipy.douglaspeucker import douglaspeucker
-from simplipy.visvalingam import visvalingam
 import ConfigParser
 import StringIO
 import os.path
 import traceback
 import sys
 import json
+from simplipy.simplifier import ChainDB
+from simplipy.douglaspeucker import douglaspeucker
+from simplipy.visvalingam import visvalingam
 
 starting_points_qobj = { # TODO PARSE AND USE IN CHAINDB
     ChainDB.STARTING_POINT_FIRSTANDLAST: 'option_douglas_firstandlast',

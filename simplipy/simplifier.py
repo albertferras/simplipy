@@ -1,19 +1,20 @@
-from osgeo import ogr
+# encoding: utf-8
+import copy
+import time
+from collections import namedtuple
+import itertools
 
+from osgeo import ogr
 import shapely.wkb
 import shapely.geometry
 
-import geotool
-from util import P_REMOVED, P_COORD, to_points_data, DIRECTION_NORMAL, DIRECTION_REVERSE, to_points_data
-from visvalingam import visvalingam
-import expandcontract
+from simplipy import geotool
+from simplipy.util import P_REMOVED, P_COORD, to_points_data, DIRECTION_NORMAL, DIRECTION_REVERSE, to_points_data
+from simplipy.visvalingam import visvalingam
+import simplipy.expandcontract as expandcontract
+import simplipy.grid as grid
+import simplipy.tools as tools
 
-import itertools
-import tools
-import copy
-import grid
-import time
-from collections import namedtuple
 
 # GEOMETRY_TYPES = {
 #     #0: "GeometryCollection",

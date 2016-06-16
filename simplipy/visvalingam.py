@@ -3,8 +3,8 @@ Created on Sep 6, 2013
 
 @author: albert
 '''
-import geotool
-from util import P_REMOVED, P_COORD, to_points_data, DIRECTION_NORMAL, DIRECTION_REVERSE
+import simplipy.geotool as geotool
+from simplipy.util import P_REMOVED, P_COORD, to_points_data, DIRECTION_NORMAL, DIRECTION_REVERSE
 
 class minHeap(object):
     def __init__(self):

@@ -1,8 +1,8 @@
 #!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
 
-from util import P_REMOVED, P_COORD
-import geotool
+from simplipy.util import P_REMOVED, P_COORD
+import simplipy.geotool as geotool
 
 
 def douglaspeucker_rec(points, i, j, epsilon_squared):

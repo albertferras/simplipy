@@ -67,7 +67,6 @@ setup_args = dict(
     packages = [
         'simplipy',
     ],
-    #ext_modules=cythonize("simplipy/geotool_c.pyx"),
 )
 
 

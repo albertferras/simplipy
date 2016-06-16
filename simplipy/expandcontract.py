@@ -1,7 +1,7 @@
 #!/usr/bin/python -u
 #encoding:utf-8
 
-import geotool
+import simplipy.geotool as geotool
 from util import P_COORD, P_REMOVED
 
 
