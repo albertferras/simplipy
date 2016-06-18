@@ -34,9 +34,34 @@ import os.path
 import traceback
 import sys
 import json
-from simplipy.simplifier import ChainDB
-from simplipy.douglaspeucker import douglaspeucker
-from simplipy.visvalingam import visvalingam
+
+try:
+    # Try to import pip installed simplipy (which will probably come with C extensions)
+    from simplipy.simplifier import ChainDB
+    from simplipy.douglaspeucker import douglaspeucker
+    from simplipy.visvalingam import visvalingam
+except ImportError:
+    # Could not find pip installed version of simplipy (or incompatible version found)
+    qgis_simplipy_plugin_path = os.path.dirname(__file__)
+    if qgis_simplipy_plugin_path not in sys.path:
+        # Add current dir to pythonpath to make sure simplipy_qgis can be found
+        sys.path.append(qgis_simplipy_plugin_path)
+    from simplipy_qgis.simplifier import ChainDB
+    from simplipy_qgis.douglaspeucker import douglaspeucker
+    from simplipy_qgis.visvalingam import visvalingam
+    sys.path.remove(qgis_simplipy_plugin_path)  # Remove from pythonpath again to avoid any problem
+
+# check if C extension is enabled
+try:
+    import simplipy.geotool_c
+    speedup_available = True
+except ImportError:
+    try:
+        import simplipy_qgis.geotool_c
+        speedup_available = True
+    except ImportError:
+        speedup_available = False
+
 
 starting_points_qobj = { # TODO PARSE AND USE IN CHAINDB
     ChainDB.STARTING_POINT_FIRSTANDLAST: 'option_douglas_firstandlast',
@@ -655,6 +680,11 @@ class qgissimplipy:
         self.dlg.ui.simplipy_log.clear()
         version = self.metadata.get("general", "version")
         self.log("Simplipy {} Log:".format(version))
+        if speedup_available:
+            self.log("C extensions enabled!")
+        if not speedup_available:
+            self.log("C extensions not found!")
+            self.log("Install simplipy on your system (pip install simplipy) to decrease simplification time")
 
         self.refresh_input_layer_list()
         # self.refresh_output_field_list()
