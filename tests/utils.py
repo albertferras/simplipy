@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import unittest
+import traceback
 from simplipy.simplifier import ChainDB
 from simplipy.douglaspeucker import douglaspeucker
 import shapely.wkt
@@ -14,6 +15,11 @@ import os
 def load_wkt(path):
     with open(path, 'r') as f:
         return shapely.wkt.load(f)
+
+
+def load_wkb(path, hex=True):
+    with open(path, 'r') as f:
+        return shapely.wkb.load(f, hex=hex)
 
 
 def load_shapefile(path, geom_key=None):
@@ -54,7 +60,11 @@ class TestCaseGeometry(unittest.TestCase):
         for key, wkb in geom_wkb_dict.iteritems():
             cdb.add_geometry(key, wkb)
         cdb.set_constraints(**constraints)
-        cdb.simplify_all(simplifier=simplifier, **simplifier_params)
+        try:
+            cdb.simplify_all(simplifier=simplifier, **simplifier_params)
+        except:
+            traceback.print_exc()
+            raise
         for key in geom_wkb_dict.iterkeys():
             yield key, cdb.to_wkb(key)
 
