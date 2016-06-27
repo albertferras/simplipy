@@ -636,14 +636,24 @@ class ChainDB(object):
                 modified = True
                 while modified:
                     modified = False
-                    # print "====" * 10
-                    # print "GeomIDX=", part_geom_idx
-                    # print "Segments:"
-                    # for segment in self.get_simplified_segments(part_geom_idx):
-                    #     print segment[0][P_COORD], segment[-1][P_COORD]
                     segments = self.get_simplified_segments(part_geom_idx)
-                    sfirst = sa = segments.next()
-                    ssecond = sb = segments.next()
+                    sfirst = sa = next(segments, None)
+                    ssecond = sb = next(segments, None)
+
+                    if sa is None or sb is None:
+                        # Chain has less than 2 points, linearring will probably disappear, which is ok
+                        # for Contract but not for Expand
+                        if mode == 'Expand':
+                            if sa and len(sa) > 2:
+                                # Recover one point
+                                modified |= expandcontract.fix(sa, expand=expand)
+                                continue
+                            else:
+                                print "Warning: Can't recover points to guarantee Expand on over-simplified geometry"
+                                # TODO: Call prevent shape removal logic and recover 3 random points
+                        else:
+                            continue
+
                     for sc in segments:
                         if not expandcontract.is_valid(sb, previous_segment=sa, next_segment=sc, expand=expand):
                             modified |= expandcontract.fix(sb, expand=expand)

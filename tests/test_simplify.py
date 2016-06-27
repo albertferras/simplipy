@@ -7,7 +7,7 @@ import ogr
 import shapely.wkb
 from simplipy.simplifier import ChainDB
 from simplipy.douglaspeucker import douglaspeucker
-from utils import TestCaseGeometry, load_wkt, load_shapefile
+from utils import TestCaseGeometry, load_wkt, load_wkb, load_shapefile
 
 data_dir = os.path.join(os.path.dirname(__file__), 'data')
 
@@ -102,6 +102,51 @@ class TestSimplifier(TestCaseGeometry):
                 try:
                     geom = shapely.wkb.loads(geometries[key])
                     simp_geom = shapely.wkb.loads(simp_wkb)
+
+                    # intersection = geom.intersection(simp_geom)
+                    # union = geom.union(simp_geom)
+                    if mode == "Expand":
+                        # Nothing from the original geometry is lost
+                        diff = geom.difference(simp_geom)
+                        if diff.area > 1e-8:
+                            raise self.failureException("Part of original geometry is lost")
+                    if mode == "Contract":
+                        diff = simp_geom.difference(geom)
+                        if diff.area > 1e-8:
+                            raise self.failureException("Part of simplified geometry is not in the original geometry")
+                except Exception:
+                    print "Failed on geometry id={}".format(key)
+                    raise
+
+    def test_expandcontract_edgecase1(self):
+        """ Simplifying the following geometry fails when contracting/expanding with these constraints
+
+        TODO: Transform the test into proper unit testing the ChainDB.apply_expandcontract function
+        """
+        geometries = {'A': load_wkb(data_path('mediterraneansea.txt'), hex=True).wkb}
+
+        simplifier = douglaspeucker
+        simplifier_params = dict(epsilon=0.01)
+        for mode in ["Expand", "Contract"]:
+            print "*"*100, mode
+            constraints = dict(expandcontract=mode,
+                               prevent_shape_removal=False,
+                               prevent_shape_removal_min_points=3,
+                               repair_intersections=True,
+                               use_topology=False,
+                               use_topology_snap_precision=0.0001,
+                               simplify_non_shared_edges=False,
+                               simplify_shared_edges=False,
+                               )
+            simp_geometries = self._test_geometry_simplification(geometries, simplifier, simplifier_params, constraints,
+                                                                 check_valid=False, check_simple=False)
+            print "Validating geometries..."
+            self.assertEquals(len(simp_geometries), 1)
+            for key, simp_wkb in simp_geometries.iteritems():
+                try:
+                    geom = shapely.wkb.loads(geometries[key])
+                    simp_geom = shapely.wkb.loads(simp_wkb)
+                    print len(geom), len(simp_geom)
 
                     # intersection = geom.intersection(simp_geom)
                     # union = geom.union(simp_geom)
