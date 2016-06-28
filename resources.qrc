@@ -1,5 +1,5 @@
 <RCC>
-    <qresource prefix="/plugins/simplipy" >
+    <qresource prefix="/plugins/qgissimplipy" >
         <file>simplipy.png</file>
     </qresource>
 </RCC>
