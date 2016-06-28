@@ -22,21 +22,46 @@
 # Import the PyQt and QGIS libraries
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
-from PyQt4.QtXml import QDomDocument
 from qgis.core import *
 # Initialize Qt resources from file resources.py
 import resources_rc
 # Import the code for the dialog
 from simplipydialog import simplipyDialog
-from afcsimplifier.simplifier import ChainDB
-from afcsimplifier.douglaspeucker import douglaspeucker
-from afcsimplifier.visvalingam import visvalingam
 import ConfigParser
 import StringIO
 import os.path
 import traceback
 import sys
 import json
+import time
+
+try:
+    # Try to import pip installed simplipy (which will probably come with C extensions)
+    from simplipy.simplifier import ChainDB
+    from simplipy.douglaspeucker import douglaspeucker
+    from simplipy.visvalingam import visvalingam
+except ImportError:
+    # Could not find pip installed version of simplipy (or incompatible version found)
+    qgis_simplipy_plugin_path = os.path.dirname(__file__)
+    if qgis_simplipy_plugin_path not in sys.path:
+        # Add current dir to pythonpath to make sure simplipy_qgis can be found
+        sys.path.append(qgis_simplipy_plugin_path)
+    from simplipy_qgis.simplifier import ChainDB
+    from simplipy_qgis.douglaspeucker import douglaspeucker
+    from simplipy_qgis.visvalingam import visvalingam
+    sys.path.remove(qgis_simplipy_plugin_path)  # Remove from pythonpath again to avoid any problem
+
+# check if C extension is enabled
+try:
+    import simplipy.geotool_c
+    speedup_available = True
+except ImportError:
+    try:
+        import simplipy_qgis.geotool_c
+        speedup_available = True
+    except ImportError:
+        speedup_available = False
+
 
 starting_points_qobj = { # TODO PARSE AND USE IN CHAINDB
     ChainDB.STARTING_POINT_FIRSTANDLAST: 'option_douglas_firstandlast',
@@ -67,6 +92,7 @@ simplify_algorithms = {
         }
     },
 }
+
 
 class ExceptNoTraceback(Exception):
     def __init__(self, message):
@@ -101,6 +127,7 @@ def exception_format2(e):
     info = "".join(traceback.format_tb(sys.exc_info()[2]))
     return str(e) + "\n\n" + info
 
+
 def debug(x):
     QgsMessageLog.logMessage(str(x), "SimpliPy")
 
@@ -109,12 +136,15 @@ geometryTypeMap = {0: "Point", 1: "LineString", 2: "Polygon"}
 
 OUTPUT_NEWLAYER = 1
 OUTPUT_NEWLAYER_HIDDEN = 2
-#OUTPUT_ATTRIBUTE = 3 # disabled
+# OUTPUT_ATTRIBUTE = 3 # disabled
 
 
-class simplipy:
-
+class QGISSimplipy(object):
     def __init__(self, iface):
+        self.sthread = None
+        self.error = False
+        self._refreshing_input_layer_list = False
+
         # Save reference to the QGIS interface
         self.layerNum = 0
         self.iface = iface
@@ -141,6 +171,13 @@ class simplipy:
         self.metadata = ConfigParser.ConfigParser()
         self.metadata.read(os.path.join(os.path.dirname(__file__), 'metadata.txt'))
 
+        # ui vars
+
+        # "Selected features" if atleast one feature is selected, "All" otherwise
+        # Set to false when user manually changes feature_group radio button
+        # Set to true when user changes/clears selection
+        self.features_group_auto = True
+
     def initGui(self):
         # Create action that will start plugin configuration
         self.action = QAction(
@@ -150,21 +187,25 @@ class simplipy:
         self.action.triggered.connect(self.run)
 
         self._refreshing_input_layer_list = False
-        self.iface.mapCanvas().selectionChanged.connect(self.refresh_feature_count)
-        #self.iface.mapCanvas().layersChanged.connect(self.refresh_input_layer_list)
+        self.iface.mapCanvas().selectionChanged.connect(self.map_features_selection_changed)
+        # self.iface.mapCanvas().layersChanged.connect(self.refresh_input_layer_list)
         self.layerRegistry.layersAdded.connect(self.refresh_input_layer_list)
         self.layerRegistry.layersRemoved.connect(self.refresh_input_layer_list)
 
         QObject.connect(self.dlg.ui.inputlayerComboBox, SIGNAL("currentIndexChanged(QString)"), self.inputlayer_changed)
-        QObject.connect(self.dlg.ui.features_selected_radio, SIGNAL("currentIndexChanged(QString)"), self.refresh_feature_count)
-        QObject.connect(self.dlg.ui.features_all_radio, SIGNAL("toggled(bool)"), self.refresh_feature_count)
-        #QObject.connect(self.dlg.ui.output_field_attribute, SIGNAL("currentIndexChanged(QString)"), self.select_output_field_radio)
+        QObject.connect(self.dlg.ui.features_selected_radio,
+                        SIGNAL("clicked()"), self.select_features_group_changed)
+        QObject.connect(self.dlg.ui.features_all_radio,
+                        SIGNAL("clicked()"), self.select_features_group_changed)
+        # QObject.connect(self.dlg.ui.output_field_attribute, SIGNAL("currentIndexChanged(QString)"),
+        #                 self.select_output_field_radio)
 
         QObject.connect(self.dlg.ui.cnstr_expandcontract, SIGNAL("toggled(bool)"), self.refresh_constraint_options_gui)
-        QObject.connect(self.dlg.ui.cnstr_repairintersections, SIGNAL("toggled(bool)"), self.refresh_constraint_options_gui)
-        QObject.connect(self.dlg.ui.cnstr_preventshaperemoval, SIGNAL("toggled(bool)"), self.refresh_constraint_options_gui)
+        QObject.connect(self.dlg.ui.cnstr_repairintersections, SIGNAL("toggled(bool)"),
+                        self.refresh_constraint_options_gui)
+        QObject.connect(self.dlg.ui.cnstr_preventshaperemoval, SIGNAL("toggled(bool)"),
+                        self.refresh_constraint_options_gui)
         QObject.connect(self.dlg.ui.cnstr_usetopology, SIGNAL("toggled(bool)"), self.refresh_constraint_options_gui)
-
 
         QObject.connect(self.dlg.ui.start_button, SIGNAL("clicked()"), self.start_simplify)
 
@@ -178,7 +219,8 @@ class simplipy:
                 parameter['qobj'] = getattr(self.dlg.ui, parameter['QObject'])
 
         for alg_id, alg in simplify_algorithms.items():
-            QObject.connect(alg['qobj']['radio'], SIGNAL("toggled(bool)"), lambda: self.show_alg_parameters(self.get_algorithm_selected()))
+            QObject.connect(alg['qobj']['radio'], SIGNAL("toggled(bool)"),
+                            lambda: self.show_alg_parameters(self.get_algorithm_selected()))
 
         # Add toolbar button and menu item
         self.iface.addToolBarIcon(self.action)
@@ -237,13 +279,13 @@ class simplipy:
         return self.input_layer_list[idx]
 
     def get_geometry_fields(self, layer):
-        L = []
+        field_list = []
         for field in layer.dataProvider().fields():
             if field.typeName() == "geometry":
-                L.append(field)
-        return L
+                field_list.append(field)
+        return field_list
 
-    #def select_output_field_radio(self):
+    # def select_output_field_radio(self):
     #    self.dlg.ui.radio_output_attribute.setChecked(True)
 
     def refresh_input_layer_list(self):
@@ -258,21 +300,23 @@ class simplipy:
                 if self.iface.activeLayer().type() == QgsMapLayer.VectorLayer:
                     selected_layer = self.iface.activeLayer()
 
-        inputlayer = self.dlg.ui.inputlayerComboBox
-        inputlayer.clear()
-        layers = [ lyr for lyr in self.layerRegistry.mapLayers().values() if lyr.type() == QgsMapLayer.VectorLayer ]
+        inputlayer_dlg = self.dlg.ui.inputlayerComboBox
+        inputlayer_dlg.clear()
+        layers = [lyr for lyr in self.layerRegistry.mapLayers().values() if lyr.type() == QgsMapLayer.VectorLayer]
 
         self.input_layer_list = []
-        sel = None
+
+        # Automatically select FeaturesAll or FeaturesSelected radio group
+        selected_layer_idx = None
         for (i, layer) in enumerate(layers):
             self.input_layer_list.append(layer)
-            inputlayer.addItem(layer.name())
+            inputlayer_dlg.addItem(layer.name())
             if selected_layer and layer.name() == selected_layer.name():
-                sel = i
+                selected_layer_idx = i
 
-        if sel is not None:
-            inputlayer.setCurrentIndex(sel)
-            if selected_layer:
+        if selected_layer_idx is not None:
+            inputlayer_dlg.setCurrentIndex(selected_layer_idx)
+            if selected_layer and self.features_group_auto:
                 if selected_layer.selectedFeatureCount() > 0:
                     self.dlg.ui.features_selected_radio.setChecked(True)
                 else:
@@ -291,7 +335,7 @@ class simplipy:
                 else:
                     num_features = 0
             return num_features
-        except:
+        except Exception:
             return 0
 
     def get_features(self, layer):
@@ -305,6 +349,20 @@ class simplipy:
             else:
                 features = []
         return features
+
+    def map_features_selection_changed(self):
+        self.features_group_auto = True
+        self.refresh_feature_count()
+
+    def select_features_group_changed(self):
+        self.features_group_auto = False
+        if self.dlg.ui.features_all_radio.isChecked():
+            # all features checked
+            pass
+        elif self.dlg.ui.features_selected_radio.isChecked():
+            # selected features checked
+            pass
+        self.refresh_feature_count()
 
     def refresh_feature_count(self):
         if self._refreshing_input_layer_list:
@@ -351,23 +409,21 @@ class simplipy:
         self.dlg.ui.simplipy_log.ensureCursorVisible()
         print msg
 
-
     def get_output_mode(self):
         if self.dlg.ui.radio_output_newlayer.isChecked():
             return OUTPUT_NEWLAYER
         if self.dlg.ui.radio_output_newlayerhidden.isChecked():
             return OUTPUT_NEWLAYER_HIDDEN
-        #if self.dlg.ui.radio_output_attribute.isChecked():
+        # if self.dlg.ui.radio_output_attribute.isChecked():
         #    return OUTPUT_ATTRIBUTE
         raise Exception("Cant find output mode")
 
-    #def get_output_field_idx(self):
+    # def get_output_field_idx(self):
     #    layer = self.get_input_layer()
     #    for (i, field) in enumerate(layer.dataProvider().fields()):
     #        if field.typeName() == "geometry" and field.name() == self.dlg.ui.output_field_attribute.currentText():
     #            return i
     #    raise Exception("Cant find output field idx!?")
-
 
     def get_algorithm_selected(self):
         for alg_id, alg in simplify_algorithms.items():
@@ -384,8 +440,7 @@ class simplipy:
 
         is_activated = lambda ui: ui.isChecked() and ui.isEnabled()
 
-        constraints = {}
-        constraints['expandcontract'] = None
+        constraints = {'expandcontract': None}
         if is_activated(self.dlg.ui.cnstr_expandcontract):
             constraints['expandcontract'] = self.dlg.ui.select_cnstr_expandcontract.currentText()
 
@@ -426,19 +481,18 @@ class simplipy:
                 value = parameter['format'](value)
                 if not parameter['validate'](value):
                     valid_parameter = False
-            except:
+            except Exception:
                 valid_parameter = False
             if not valid_parameter:
                 raise ExceptNoTraceback(parameter['format_description'])
             params[parameter_name] = value
         return params
 
-
-    def createLayer(self, geometry_type, crs=None, attributes=None, gid_column_name="gid"):
+    def create_layer(self, geometry_type, crs=None, gid_column_name="gid"):
         # 1 - these 4 lines are here to avoid the popup asking the CRS of the new created layer
-        projectionSettingKey = "Projections/defaultBehaviour"
-        oldProjectionSetting = self.qgisSettings.value(projectionSettingKey)
-        self.qgisSettings.setValue(projectionSettingKey, "useGlobal")
+        projection_setting_key = "Projections/defaultBehaviour"
+        old_projection_setting = self.qgisSettings.value(projection_setting_key)
+        self.qgisSettings.setValue(projection_setting_key, "useGlobal")
         self.qgisSettings.sync()
 
         # create layer
@@ -450,10 +504,9 @@ class simplipy:
         pr = layer.dataProvider()
         pr.addAttributes([QgsField(gid_column_name, QVariant.String)])
 
-        self.qgisSettings.setValue(projectionSettingKey, oldProjectionSetting)
+        self.qgisSettings.setValue(projection_setting_key, old_projection_setting)
         return layer
 
-    sthread = None
     def start_simplify(self):
         tstart = time.time()
         self.error = False
@@ -504,9 +557,9 @@ class simplipy:
 
             gid_column = get_gid_column_name(layer)
             if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
-                new_layer = self.createLayer(geometry_type, layer.crs(), gid_column_name=gid_column)
+                new_layer = self.create_layer(geometry_type, layer.crs(), gid_column_name=gid_column)
                 new_layer.startEditing()
-            #elif output_mode == OUTPUT_ATTRIBUTE:
+            # elif output_mode == OUTPUT_ATTRIBUTE:
             #    self.log("START EDIT")
             #    layer.startEditing()
 
@@ -545,7 +598,7 @@ class simplipy:
                 count_feature_stats('simplified', simp_feature)
                 if output_mode in [OUTPUT_NEWLAYER, OUTPUT_NEWLAYER_HIDDEN]:
                     new_layer.dataProvider().addFeatures([simp_feature])
-                #if output_mode == OUTPUT_ATTRIBUTE:
+                # if output_mode == OUTPUT_ATTRIBUTE:
                 #    idx = self.get_output_field_idx()
                 #    gid = simp_feature.attributes()[0]
                 #    feature = feature_map[gid] # feature from original source(layer)
@@ -612,8 +665,8 @@ class simplipy:
 
                 self.sthread = None
 
-            def error(e):
-                msg = json.loads(e)
+            def error(error_message_json):
+                msg = json.loads(error_message_json)
                 if str(type(StopSimplificationException())) == msg['error']:
                     # Note: I don't like the way I'm checking the error class
                     self.log("Simplification cancelled by user")
@@ -625,7 +678,8 @@ class simplipy:
             self.set_ui_enabled(False)
             self.dlg.ui.start_button.setText("Stop")
             self.dlg.ui.start_button.setDisabled(False)
-            self.sthread = SimplifyThread(self.iface.mainWindow(), layer, simplifier, params, constraints, features, num_features, logger=self.log)
+            self.sthread = SimplifyThread(self.iface.mainWindow(), layer, simplifier, params, constraints, features,
+                                          num_features, logger=self.log)
             QObject.connect(self.sthread, SIGNAL("jobFinished( PyQt_PyObject )"), jobfinished)
             QObject.connect(self.sthread, SIGNAL("progress( PyQt_PyObject )"), setprogress)
             QObject.connect(self.sthread, SIGNAL("featureResult( PyQt_PyObject )"), save_feature)
@@ -649,14 +703,22 @@ class simplipy:
 
     # run method that performs all the real work
     def run(self):
+        """ Executed when user clicks the toolbar icon """
         # show the dialog
         self.dlg.show()
 
         self.dlg.ui.simplipy_log.clear()
         version = self.metadata.get("general", "version")
         self.log("Simplipy {} Log:".format(version))
+        if speedup_available:
+            self.log("C extensions enabled!")
+        if not speedup_available:
+            self.log("C extensions not found!")
+            self.log("Install simplipy on your system (pip install simplipy) to decrease simplification time")
 
         self.refresh_input_layer_list()
+        self.refresh_feature_count()
+        self.refresh_constraint_options_gui()
         # self.refresh_output_field_list()
         self.show_alg_parameters(self.get_algorithm_selected())
 
@@ -672,28 +734,33 @@ class simplipy:
 def get_gid_column_name(layer):
     return layer.attributeDisplayName(0)
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
-class WorkerThread( QThread ):
-    def __init__( self, parentThread):
-        self.parent = parentThread
-        QThread.__init__( self, parentThread )
-    def run( self ):
+
+class WorkerThread(QThread):
+    def __init__(self, parent_thread):
+        self.running = False
+        self.parent = parent_thread
+        QThread.__init__(self, parent_thread)
+
+    def run(self):
         self.running = True
-        success = self.doWork()
-        self.emit( SIGNAL( "jobFinished( PyQt_PyObject )" ), success )
-    def stop( self ):
+        success = self.do_work()
+        self.emit(SIGNAL("jobFinished( PyQt_PyObject )"), success)
+
+    def stop(self):
         self.running = False
         pass
-    def doWork( self ):
+
+    def do_work(self):
         return True
-    def cleanUp( self):
+
+    def clean_up(self):
         pass
 
-import time
+
 class SimplifyThread(WorkerThread):
-    def __init__(self, parentThread, source_layer, simplifier, params, constraints, features, num_features, logger=None):
-        WorkerThread.__init__(self, parentThread)
+    def __init__(self, parent_thread, source_layer, simplifier, params, constraints, features, num_features,
+                 logger=None):
+        WorkerThread.__init__(self, parent_thread)
         self.simplifier = simplifier
         self.params = params
         self.constraints = constraints
@@ -702,20 +769,8 @@ class SimplifyThread(WorkerThread):
         self.logger = logger
         self.source_layer = source_layer
 
-    def stop( self ):
+    def stop(self):
         WorkerThread.stop(self)
-
-    def simplifyFeature(self, feature):
-        wkb = feature.geometry().asWkb()
-        wkb_simplified = self.simplifier.simplify(wkb)
-
-        # save simplified wkb
-        f = QgsFeature()
-        geom = QgsGeometry()
-        geom.fromWkb(wkb_simplified)
-        f.setGeometry(geom)
-        f.setAttributes(["haha", "hehe"])
-        return f
 
     def progress_iter(self, items, total=None):
         self.emit(SIGNAL("progress( PyQt_PyObject )"), 0)
@@ -738,7 +793,7 @@ class SimplifyThread(WorkerThread):
                 last_p = p_int
         self.emit(SIGNAL("progress( PyQt_PyObject )"), 100.0)
 
-    def doWork(self):
+    def do_work(self):
         try:
             self.emit(SIGNAL("progress( PyQt_PyObject )"), 0)
             
@@ -761,13 +816,17 @@ class SimplifyThread(WorkerThread):
             # Simplify features
             self.logger("simplify features")
             cdb.set_constraints(**self.constraints)
-            cdb.simplify_keys(self.progress_iter(features.keys()), self.simplifier, push_progress=push_progress, **self.params)
+            cdb.simplify_keys(self.progress_iter(features.keys()), self.simplifier,
+                              push_progress=push_progress, **self.params)
 
             # Return geometries as wkb
             self.logger("return wkbs")
             for key in self.progress_iter(features.keys()):
                 # get wkb
                 wkb = cdb.to_wkb(key)
+                if wkb is None:
+                    # Feature over-simplified and disappeared
+                    continue
 
                 # create feature
                 f = QgsFeature()

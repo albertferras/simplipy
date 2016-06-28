@@ -1,79 +1,35 @@
-'''
-Created on Sep 6, 2013
-
-@author: albert
-'''
 import math
 
-_logger = None
+def near(a, b, atol=1e-8):
+    return abs(a-b) < atol
 
 
-def setlogger(logger):
-    global _logger
-    _logger = logger
+def same_point(px, py, qx, qy):
+    return near(px, qx) and near(py, qy)
 
 
-def log(x):
-    _logger(x)
-
-
-def qdistance(a, b):
-    return (a[0]-b[0])**2 + (a[1]-b[1])**2
-
-
-def distance(a, b):
-    return math.sqrt(qdistance(a, b))
-
-
-def perpendicular_qdistance(p, a, b):
-    # source: http://stackoverflow.com/questions/849211/shortest-distance-between-a-point-and-a-line-segment
-    # returns the perpendicular distance between point p and line ab
-    l2 = qdistance(a, b)
-    if l2 == 0.0:
-        return qdistance(p, a)
-
-    # dot product(p - a, b - a) / l2
-    t = ((p[0] - a[0])*(b[0] - a[0]) + (p[1] - a[1])*(b[1] - a[1])) / l2
-    if t < 0.0:
-        return qdistance(p, a)
-    elif t > 1.0:
-        return qdistance(p, b)
-
-    proj_x = a[0] + t*(b[0] - a[0])
-    proj_y = a[1] + t*(b[1] - a[1])
-    c = [proj_x, proj_y]
-    return qdistance(p, c)
-
-
-def perpendicular_distance(p, a, b):
-    return math.sqrt(perpendicular_qdistance(p, a, b))
-
-
-def same_point(p, q):
-    return near(p[0], q[0]) and near(p[1], q[1])
-
-
-def crosses(line1, line2, endpoint_intersects=True):
+def crosses(x1, y1, x2, y2, u1, v1, u2, v2, endpoint_intersects=True):
     """
     Return True if line segment line1 intersects line segment line2 and
     line1 and line2 are not parallel.
-    """
+
     (x1, y1), (x2, y2) = line1
     (u1, v1), (u2, v2) = line2
-    
-    if (same_point((x1, y1), (u1, v1))
-            or same_point((x1, y1), (u2, v2))
-            or same_point((x2, y2), (u1, v1))
-            or same_point((x2, y2), (u2, v2))):
+    """
+
+    if (same_point(x1, y1, u1, v1)
+            or same_point(x1, y1, u2, v2)
+            or same_point(x2, y2, u1, v1)
+            or same_point(x2, y2, u2, v2)):
         return endpoint_intersects
 
     (a, b), (c, d) = (x2-x1, u1-u2), (y2-y1, v1-v2)
-    e, f = u1-x1, v1-y1
     denom = float(a*d - b*c)
     if near(denom, 0):
         # parallel
         return False
     else:
+        e, f = u1-x1, v1-y1
         t = (e*d - b*f)/denom
         s = (a*f - e*c)/denom
         # When 0<=t<=1 and 0<=s<=1 the point of intersection occurs within the
@@ -82,10 +38,37 @@ def crosses(line1, line2, endpoint_intersects=True):
             return 0 < t < 1 and 0 < s < 1
         else:
             return 0 <= t <= 1 and 0 <= s <= 1
-        
 
-def near(a, b, atol=1e-8):
-    return abs(a-b) < atol
+
+def qdistance(x1, y1, x2, y2):
+    return (x1 - x2)**2 + (y1 - y2)**2
+
+
+def distance(x1, y1, x2, y2):
+    return math.sqrt(qdistance(x1, y1, x2, y2))
+
+
+def perpendicular_qdistance(p, a, b):
+    # source: http://stackoverflow.com/questions/849211/shortest-distance-between-a-point-and-a-line-segment
+    # returns the perpendicular distance between point p and line ab
+    px, py = p
+    ax, ay = a
+    bx, by = b
+
+    l2 = qdistance(ax, ay, bx, by)
+    if l2 == 0.0:
+        return qdistance(px, py, ax, ay)
+
+    # dot product(p - a, b - a) / l2
+    t = ((px - ax)*(bx - ax) + (py - ay)*(by - ay)) / l2
+    if t < 0.0:
+        return qdistance(px, py, ax, ay)
+    elif t > 1.0:
+        return qdistance(px, py, bx, by)
+
+    proj_x = ax + t*(bx - ax)
+    proj_y = ay + t*(by - ay)
+    return qdistance(px, py, proj_x, proj_y)
 
 
 def get_furthest_point(p, point_list):
@@ -93,8 +76,10 @@ def get_furthest_point(p, point_list):
     # The result is the squared distance and the index of this point.
     dmax = 0
     i = 0
+    px, py = p
     for (j, p2) in enumerate(point_list):
-        d = qdistance(p, p2)
+        ax, ay = p2
+        d = qdistance(px, py, ax, ay)
         if d > dmax:
             dmax = d
             i = j
@@ -216,9 +201,9 @@ def angle_is_between(x, a, b):
         return x >= a or x <= b
 
 
-def angle(p, q):
-    h = q[1] - p[1]
-    w = q[0] - p[0]
+def angle(px, py, qx, qy):
+    h = qy - py
+    w = qx - px
     return math.atan2(h, w)
 
 to_rad = lambda d: d*math.pi/180.0
@@ -228,8 +213,10 @@ to_deg = lambda r: r*180.0/math.pi
 def point_to_circle_tangent_angles(p, c, r):
     # given a point p and a circle with center c and radius r, returns the angles of the
     # 2 tangents of the circle that goes through p.
-    alpha = math.asin(r/distance(p, c))
-    beta = angle(p, c)
+    px, py = p
+    cx, cy = c
+    alpha = math.asin(r/distance(px, py, cx, cy))
+    beta = angle(px, py, cx, cy)
 
     (a, b) = (_angle_fix(beta-alpha), _angle_fix(beta+alpha))
     return a, b
@@ -261,10 +248,14 @@ def arc_intersection(a, b, c, d):
 
 def filter_edges_crossing_line(G, C, line):
     # filter edges in graph G that intersects line
+    (u1, v1), (u2, v2) = line
+
     i_list = G.keys()
     for i in i_list:
         j_list = G[i]
-        j_list = filter(lambda j: not crosses((C[i], C[j]), line, endpoint_intersects=True), j_list)
+
+        x1, y1 = C[i]
+        j_list = filter(lambda j: not crosses(x1, y1, C[j][0], C[j][1], u1, v1, u2, v2, endpoint_intersects=True), j_list)
         if len(j_list) == 0:
             G.pop(i)
         else:
@@ -280,6 +271,7 @@ def compute_allowed_shortcuts(C, epsilon):
     # Notes:
     #  lij = half-line from vi to vj
     #  Dk = a closed disk centered at vk with radius epsilon
+
     qepsilon = epsilon**2
     shortcuts = {}
     n = len(C)
@@ -288,10 +280,12 @@ def compute_allowed_shortcuts(C, epsilon):
         j = i + 1
         shortcuts_i = []
         while I is not None and j < n:
-            lij_angle = angle(C[i], C[j])
+            ax, ay = C[i]
+            bx, by = C[j]
+            lij_angle = angle(ax, ay, bx, by)
             if angle_is_between(lij_angle, I[0], I[1]):
                 shortcuts_i.append(j)
-            if qdistance(C[i], C[j]) > qepsilon:  # if vi not in Dj
+            if qdistance(ax, ay, bx, by) > qepsilon:  # if vi not in Dj
                 # intersect (a,b) with angles of half-lines that intersect Dj
                 (da, db) = point_to_circle_tangent_angles(C[i], C[j], epsilon)
                 I = arc_intersection(I[0], I[1], da, db)
@@ -303,12 +297,17 @@ def compute_allowed_shortcuts(C, epsilon):
 
 def count_line_chain_crossings(line, chain):
     # count how many times the line(segment) crosses chain(list of segments)
+    (x1, y1), (x2, y2) = line
+
     n = 0
     last_side = None
     for i in range(len(chain)-1):
         line2 = (chain[i], chain[i+1])
         side = ccw_norm(line[0], line[1], chain[i+1])
-        if crosses(line, line2, endpoint_intersects=True) \
+
+        (u1, v1), (u2, v2) = line2
+
+        if crosses(x1, y1, x2, y2, u1, v1, u2, v2, endpoint_intersects=True) \
                 and (0 != last_side != side != 0 or (last_side is None and side == -1)):
             n += 1
         if side != 0:
@@ -316,23 +315,3 @@ def count_line_chain_crossings(line, chain):
         i += 1
     return n
 
-
-def same_segment(line1, line2):
-    p1, q1 = line1
-    p2, q2 = line2
-    return ((p1 == q1) and (p2 == q2)) or ((p1 == q2) and (p2 == q1))
-
-
-def similar_segment(line1, line2, k=0.001):
-    p1, q1 = line1
-    p2, q2 = line2
-
-    for a1, a2 in ((p1, q1), (q1, p1)):
-        if distance(a1, p2) < k and distance(a2, q2) < k:
-            return True
-    return False
-
-
-def segment_to_wkt(line):
-    p, q = line
-    return "LINESTRING ({} {}, {} {})".format(*(p + q))

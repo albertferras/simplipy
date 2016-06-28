@@ -2,17 +2,24 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-from afcsimplifier.simplifier import ChainDB
-from afcsimplifier.douglaspeucker import douglaspeucker
+import traceback
+from simplipy.simplifier import ChainDB
+from simplipy.douglaspeucker import douglaspeucker
 import shapely.wkt
 import shapely.wkb
 import shapely.validation
 import ogr
 import os
 
+
 def load_wkt(path):
     with open(path, 'r') as f:
         return shapely.wkt.load(f)
+
+
+def load_wkb(path, hex=True):
+    with open(path, 'r') as f:
+        return shapely.wkb.load(f, hex=hex)
 
 
 def load_shapefile(path, geom_key=None):
@@ -41,7 +48,7 @@ class TestCaseGeometry(unittest.TestCase):
     """
 
     def simplify_geometries(self, geom_wkb_dict, simplifier, simplifier_params, constraints):
-        """ Simplify a collection of geometries using afcsimplifier and a specific simplifier algorithm and constraints.
+        """ Simplify a collection of geometries using simplipy and a specific simplifier algorithm and constraints.
         :param geom_wkb_dict: dict (key, value) = (identifier, wkb (binary string))
         :param simplifier: simplify algorithm function (eg. douglaspeucker, visvalingam)
         :param simplifier_params: algorithm simplifier parameters (eg. for douglaspeucker, {'epsilon': 0.3})
@@ -53,7 +60,11 @@ class TestCaseGeometry(unittest.TestCase):
         for key, wkb in geom_wkb_dict.iteritems():
             cdb.add_geometry(key, wkb)
         cdb.set_constraints(**constraints)
-        cdb.simplify_all(simplifier=simplifier, **simplifier_params)
+        try:
+            cdb.simplify_all(simplifier=simplifier, **simplifier_params)
+        except:
+            traceback.print_exc()
+            raise
         for key in geom_wkb_dict.iterkeys():
             yield key, cdb.to_wkb(key)
 
@@ -108,11 +119,13 @@ class TestCaseGeometry(unittest.TestCase):
     def save_shapefile(self, path, name, geom_wkb_dict, gtype=ogr.wkbMultiPolygon):
         """ Save a collection of geometries to a shapefile in [path].
         :param geom_wkb_dict: dict (key, value) = (identifier, wkb (binary string))"""
-        os.popen("mkdir -p {}".format(path))
+        shapefile_dir = os.path.join(path, name)
+        os.popen("rm -rf {}".format(shapefile_dir))
+        os.popen("mkdir -p {}".format(shapefile_dir))
 
         # Now convert it to a shapefile with OGR
         driver = ogr.GetDriverByName('Esri Shapefile')
-        ds = driver.CreateDataSource(os.path.join(path, '{}.shp'.format(name)))
+        ds = driver.CreateDataSource(os.path.join(shapefile_dir, '{}.shp'.format(name)))
         layer = ds.CreateLayer('', None, gtype)
 
         # Add one attribute
