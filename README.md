@@ -8,9 +8,9 @@ A tool to simplify your geometries with more advanced options:
 - Choose between two line simplification algorithms
 - Choose your precision
 - Preserve the topology
-- No self-intersections for any simplification
+- No self-intersections or red-blue intersections for any simplification
 - Prevent shape removal
-- Simplify only parts of a geometry
+- Simplify only parts of a geometry (shared segments or non-shared segments)
 
 This is a plug-in for qgis which allows you to do all of this in a friendly interface AND a python package.
 
