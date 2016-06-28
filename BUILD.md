@@ -24,3 +24,7 @@ make
 make deploy
 ```
 
+- Create simplipy.zip package for qgis plugins repository
+```
+make zip
+```
