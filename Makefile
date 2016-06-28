@@ -32,7 +32,7 @@ PLUGINNAME = qgissimplipy
 
 PY_FILES = qgissimplipy.py simplipydialog.py __init__.py
 
-EXTRAS = simplipy.png metadata.txt
+EXTRAS = simplipy.png metadata.txt qgis_style_test.qml
 
 UI_FILES = ui_simplipy.py
 

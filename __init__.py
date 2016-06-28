@@ -23,5 +23,5 @@
 
 def classFactory(iface):
     # load simplipy class from file simplipy
-    from qgissimplipy import qgissimplipy
-    return qgissimplipy(iface)
+    from qgissimplipy import QGISSimplipy
+    return QGISSimplipy(iface)
