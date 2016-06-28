@@ -5,7 +5,7 @@ Requirements
 ```
 sudo apt-get install qgis python-qgis
 sudo apt-get install pyqt4-dev-tools qt4-designer
-pip install shapely
+pip install -r requirements.txt
 ```
 
 
