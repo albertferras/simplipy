@@ -59,37 +59,32 @@ def snap_coordinates(chaindb, snap_distance):
     # -------
     # Since we will iterate over all areas X, to avoid double/triple comparisons we will only compare points
     # from area X with points of areas X, F, G, H and I.
-    # Note that, for example, points between areas A and X will be done when the center area is A (A=X' and E=I')
+    # Note that, for example, points between areas A and X will be done when the center area is A (A=X' and X=I')
     chains = chaindb.chains
     for grid_id, chains_points in grid.iteritems():
         gx, gy = grid_id
-        # X-X points
-        for (chain_id1, p_idx1), (chain_id2, p_idx2) in itertools.combinations(chains_points, 2):
-            chain1 = chains[chain_id2].points
-            if chain_id1 == chain_id2 and is_closed_chain(chain1) and sorted((p_idx1, p_idx2)) == (0, len(chain1)-1):
-                # First and last point from closed chain are considered (and has to be) the same in a linearring.
-                continue
-
-            p1 = chain1[p_idx1][P_COORD]
-            p2 = chains[chain_id2].points[p_idx2][P_COORD]
-            if geotool.distance(p1[0], p1[1], p2[0], p2[1]) <= snap_distance:
-                chains[chain_id2].points[p_idx2][P_COORD] = (p1[0], p1[1])
-
         # X-(F,G,H,I)
-        for grid_id2 in ((gx + 1, gy),  # F
+        for grid_id2 in ((gx, gy),  # X
+                         (gx + 1, gy),  # F
                          (gx - 1, gy + 1),  # G
                          (gx, gy + 1),  # H
                          (gx + 1, gy + 1),  # I
                          ):
+            same_grid = grid_id == grid_id2
             chains_points2 = grid.get(grid_id2)
             if not chains_points2:
                 continue
-
             for (chain_id1, p_idx1), (chain_id2, p_idx2) in itertools.product(chains_points, chains_points2):
-                p1 = chains[chain_id1].points[p_idx1][P_COORD]
+                chain1 = chains[chain_id1].points
+                if same_grid and chain_id1 == chain_id2 and is_closed_chain(chain1) \
+                        and sorted((p_idx1, p_idx2)) == (0, len(chain1)-1):
+                    # First and last point from closed chain are considered (and has to be) the same in a linearring.
+                    continue
+
+                p1 = chain1[p_idx1][P_COORD]
                 p2 = chains[chain_id2].points[p_idx2][P_COORD]
                 if geotool.distance(p1[0], p1[1], p2[0], p2[1]) <= snap_distance:
-                    chains[chain_id2].points[p_idx2][P_COORD] = (p1[0], p1[1])
+                    chain1[p_idx1][P_COORD] = (p2[0], p2[1])
 
 
 def infer_topology(chaindb):
