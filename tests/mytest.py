@@ -29,7 +29,7 @@ def run():
 
 def run2():
     data, key, epsilon = data_path('hrp00b11m/canada.shp'), 'HR_UID', 150
-    data, key, epsilon = data_path('naturalearth_nations/ne_10m_admin_0_countries.shp'), 'ISO_A2', 0.05
+    # data, key, epsilon = data_path('naturalearth_nations/ne_10m_admin_0_countries.shp'), 'ISO_A2', 0.05
     geom_wkb_dict = load_shapefile(data, geom_key=key)
 
     cdb = ChainDB()

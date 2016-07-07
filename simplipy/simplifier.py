@@ -1,20 +1,20 @@
-# encoding: utf-8
+#!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
 import copy
 import time
-from collections import namedtuple
 import itertools
-
 from osgeo import ogr
 import shapely.wkb
 import shapely.geometry
 
 from simplipy import geotool
-from simplipy.util import P_REMOVED, P_COORD, to_points_data, DIRECTION_NORMAL, DIRECTION_REVERSE, to_points_data
+from simplipy.util import (P_REMOVED, P_COORD, DIRECTION_NORMAL, DIRECTION_REVERSE, to_points_data, is_closed_chain,
+                           CSegment, CChain, CGeometry)
 from simplipy.visvalingam import visvalingam
 import simplipy.expandcontract as expandcontract
 import simplipy.grid as grid
 import simplipy.tools as tools
-
+from simplipy.topology import infer_topology
 
 # GEOMETRY_TYPES = {
 #     #0: "GeometryCollection",
@@ -39,26 +39,9 @@ except:
     pass
 # --------------------
 
-from collections import Counter
-
 
 class DataInconsistency(Exception):
     pass
-
-
-def list_difference(l1, l2):
-    c1 = Counter(l1)
-    c2 = Counter(l2)
-    diff = c1 - c2
-    return list(diff.elements())
-
-is_closed_chain = lambda points: points[0][P_COORD] == points[-1][P_COORD]
-
-
-CSegment = namedtuple('CSegment', ['idx',  # index of this segment in the 'segment list'
-                                   'chain_idx',  # chain_idx in the 'chains list'
-                                   'points_idx',  # Two indexes in chains[chain_idx].points representing the segment
-                                   ])
 
 
 class ChainsSegment(object):
@@ -66,36 +49,9 @@ class ChainsSegment(object):
         self.geometries = geometries
         self.segments = []
         self.chains = chains
-        grid_width = 3 * self.average_segment_length_sample(max_sample_size=100000)
+        grid_width = 3 * tools.average_segment_length_sample(self.chains, max_sample_size=100000)
         self.G = grid.Grid(width=grid_width)
         self._load_segments()
-
-    def average_segment_length_sample(self, max_sample_size):
-        """ Returns the average segment length from a sample of all segments in self.chains (from original geometry!)
-        """
-        distances = []
-        try:
-            for (c, chain) in enumerate(self.chains):
-                if chain is None:
-                    continue
-                points = iter(chain.points)
-                last = next(points)[P_COORD]
-                for p in points:
-                    p = p[P_COORD]
-                    if last != p:
-                        dist = geotool.distance(p[0], p[1], last[0], last[1])
-                        distances.append(dist)
-                        if len(distances) > max_sample_size:
-                            break
-                    last = p
-                if len(distances) > max_sample_size:
-                    break
-        except StopIteration:
-            pass
-        if len(distances) == 0:
-            return 0.01
-        avg = sum(distances) / len(distances)
-        return avg
 
     def _load_segments(self):
         for (c, chain) in enumerate(self.chains):
@@ -198,41 +154,6 @@ class ChainsSegment(object):
         self.get_chain_points(chain_idx)[i][P_REMOVED] = False
 
 
-
-# point_key: use this to snap points that are almost identical
-point_key = lambda p: ("%.5f;%.5f" % p[P_COORD])
-# coord_key: should be the same as point_key! (not merging them due to performance)
-coord_key = lambda coord: ("%.5f;%.5f" % coord)
-point_key2 = lambda p, k: (int(p[P_COORD][0]/k)*k, int(p[P_COORD][1]/k)*k)
-coord_key2 = lambda coord, k: (int(coord[0]/k)*k, int(coord[1]/k)*k)
-
-
-class JunctionPoints(object):
-    def __init__(self):
-        self.junctions = {}
-
-    def __len__(self):
-        return len(self.junctions)
-
-    def add_chain(self, key, chain_id):
-        chains = self.junctions.get(key)
-        if chains is None:
-            self.junctions[key] = set()
-        self.junctions[key].add(chain_id)
-
-    def has_key(self, key):
-        return self.junctions.has_key(key)
-
-    def get(self, key):
-        return self.junctions.get(key)
-
-
-CGeometry = namedtuple('CGeometry', ['type', 'parent', 'children'])
-
-CChain = namedtuple('CChain', ['parents', 'points'])
-# a chain can have 1 or 2 parents (shared polygons). 1st parent has DIRECTION_NORMAL and 2nd DIRECTION_REVERSE
-
-
 class ChainDB(object):
     KEY_SUBGEOMETRY = object()
 
@@ -293,9 +214,10 @@ class ChainDB(object):
         self.simplify_keys(self.keys.keys(), simplifier, **kwargs)
 
     def simplify_keys(self, keys, simplifier, push_progress=None, **kwargs):
-        self.junction_points = JunctionPoints()
         if self.constraint_use_topology:
-            self.infer_topology()
+            if push_progress:
+                push_progress('Infer topology')
+            infer_topology(self)
 
         self.printchains = False
         if self.DEBUG:
@@ -433,184 +355,6 @@ class ChainDB(object):
                             txt = "[q {}]".format(len(points) - i - 1)
                             print tab, "{:<10}[{:>3}] {}, {}".format(txt, i, *p)
                             i += 1
-
-    def infer_topology(self):
-        debug = False
-        if debug:
-            self.print_geoms()
-            self.print_chains()
-
-        K = self.constraint_use_topology_snap_precision
-        # Identify junctions between chains
-        # http://bost.ocks.org/mike/topology/ (Step 2.Join)
-        # 1 - Map points
-        point_map = {}  # may crash memory
-        for (c, chain) in enumerate(self.chains):
-            for point in chain.points:
-                key = point_key2(point, K)
-                geoms = point_map.get(key)
-                if geoms is None:
-                    point_map[key] = [c]
-                else:
-                    point_map[key].append(c)
-
-        # 2 - Detect junctions
-        for (c, chain) in enumerate(self.chains):
-            last_key = point_key2(chain.points[0], K)
-            last_group = point_map.get(last_key)
-            for p in chain.points[1:]:
-                key = point_key2(p, K)
-                group = point_map.get(key)
-                if group != last_group:
-                    join = list_difference(group, last_group)
-                    leaves = list_difference(last_group, group)
-                    if len(join) > 0:
-                        self.junction_points.add_chain(key, c)
-                    if len(leaves) > 0:
-                        self.junction_points.add_chain(last_key, c)
-                    last_group = group
-                last_key = key
-
-        # 3 - Split chains by junction
-        junction_to_junction = {}
-
-        def mark_junction_to_junction_chain(key1, key2, chain_idx):
-            L = junction_to_junction.get((key1,key2))
-            if L is None:
-                junction_to_junction[(key1, key2)] = [chain_idx]
-            else:
-                junction_to_junction[(key1, key2)].append(chain_idx)
-
-        def _get_j2j_chain(key1, key2, chain_points):
-            chain_idxs_marked = junction_to_junction.get((key1, key2))
-            if chain_idxs_marked is not None:
-                for chain_idx2 in chain_idxs_marked:
-                    # verify that it's the same chain
-                    p1 = chain_points
-                    p2 = self.chains[chain_idx2].points
-
-                    if point_key2(p1[0], K) != point_key2(p2[0], K) or point_key2(p1[-1], K) != point_key2(p2[-1], K):
-                        raise Exception("this cant happen (j2j)")
-
-                    if point_key2(p1[1], K) == point_key2(p2[1], K):
-                        return chain_idx2
-            return None
-
-        def get_junction_to_junction_chain(key1, key2, chain_points):
-            direction = DIRECTION_NORMAL
-            chain_idx2 = _get_j2j_chain(key1, key2, chain_points)
-            if chain_idx2 is None:
-                direction = DIRECTION_REVERSE
-                chain_idx2 = _get_j2j_chain(key2, key1, chain_points[::-1])
-            return direction, chain_idx2
-
-        disable_chains = set()
-        for geom in self.geometries:
-            if geom.type != "LinearRing":
-                continue
-            if debug:
-                print "---------------------"
-                print "Geom %s" % geom.parent
-            geom_chains = geom.children
-
-            new_chain_indexes = []
-            chain_created = False
-            for c in geom_chains:
-                if debug:
-                    print "CHAIN %s (parent=%s)" % (c, self.chains[c].parents)
-                    tab = "    "
-                disable_chain = True
-                chain = self.chains[c]
-                if len(chain.parents) != 1:
-                    raise Exception("expecting parents size = 1!?")
-                points = chain.points
-                start_key = point_key2(points[0], K)
-
-                i = 0
-                j = 1
-                while j < len(points):
-                    p = points[j]
-                    key = point_key2(p, K)
-                    if self.junction_points.has_key(key):
-
-                        subchain = points[i:j+1]
-                        (direction, chain_idx2) = get_junction_to_junction_chain(start_key, key, subchain)
-
-                        if debug:
-                            print tab, "start_key=%s -> %s" % (start_key, key)
-                            print tab, "Chain %s----->%s" % (list(self.junction_points.get(start_key)),
-                                                             list(self.junction_points.get(key)))
-
-                        # check if junction to junction A->B->A
-                        if chain_idx2 is not None:
-                            if self.chains[chain_idx2].parents == self.chains[c].parents:
-                                chain_idx2 = None
-
-                        if chain_idx2 is None:
-                            # Subchain not yet saved
-                            if j == len(points)-1 and chain_created is False:
-                                # if last point in the chain but there was no junction inbetween
-                                # no need to create new chain
-                                chain_idx2 = c
-                                dbg = "nochange"
-                                disable_chain = False
-                            else:
-                                chain_created = True
-                                # create new chain
-                                chain_idx2 = len(self.chains)
-                                self.chains.append(CChain(parents=[chain.parents[0]], points=subchain))
-                                dbg = "new"
-                            mark_junction_to_junction_chain(start_key, key, chain_idx2)
-                        else:
-                            chain_created = True
-                            # two chains from distinct polygons will share the memory space
-                            # subchain = self.chains[chain_idx2].points
-                            dbg = "reused %s" % chain_idx2
-
-                            self.chains[chain_idx2].parents.append(chain.parents[0])
-
-                            # chain_idx2 = len(self.chains)
-                            # self.chains.append(CChain(parents=chain.parents, points=subchain))
-                            # Subchain already saved
-                        new_chain_indexes.append(chain_idx2)
-                        if debug:
-                            print tab, "SPLIT %s to chainid=%s" % (c, chain_idx2), dbg
-                        i = j
-                        start_key = key
-                    j += 1
-                if disable_chain:
-                    disable_chains.add(c)
-            if debug:
-                print "geom new chains=%s" % new_chain_indexes
-
-            if len(new_chain_indexes) > 0:
-                for parent_geom_idx in chain.parents:
-                    parent_cgeom = self.geometries[parent_geom_idx]
-                    self.geometries[parent_geom_idx] = CGeometry(type=parent_cgeom.type,
-                                                                 parent=parent_cgeom.parent,
-                                                                 children=new_chain_indexes)
-                    #geom.children = new_chain_indexes
-
-            for c in disable_chains:
-                self.chains[c] = None
-
-        # 4 - Share chains
-        # print_chains()
-        if debug:
-            self.print_geoms()
-            self.paint_chains()
-
-    def is_connected_by_junction(self, line1, line2, tolerance=0.01):
-        key1a = coord_key2(line1[0], tolerance)
-        key1b = coord_key2(line1[-1], tolerance)
-        key2a = coord_key2(line2[0], tolerance)
-        key2b = coord_key2(line2[-1], tolerance)
-
-        if (key1a == key2a or key1a == key2b) and self.junction_points.has_key(key1a):
-            return True
-        if (key1b == key2a or key1b == key2b) and self.junction_points.has_key(key1b):
-            return True
-        return False
 
     def apply_expandcontract(self, mode, keys):
         """ Apply expand contract constraint to geometries in this ChainDB
@@ -766,7 +510,7 @@ class ChainDB(object):
         epsilon = kwargs.get('epsilon', 0.01)
         while iterations <= self.max_iter and iter_k < len(cs.segments):
             debug = (iterations == self.max_iter)
-            #debug = True
+            # debug = True
             if debug:
                 t = time.time()
                 print "Iteration %s" % iterations
@@ -830,8 +574,13 @@ class ChainDB(object):
                     (x1, y1), (x2, y2) = line1
                     (u1, v1), (u2, v2) = line2
 
-                    if geotool.crosses(x1, y1, x2, y2, u1, v1, u2, v2, endpoint_intersects=True) \
-                            and not self.is_connected_by_junction(line1, line2, tolerance=self.constraint_use_topology_snap_precision):
+                    # if geotool.crosses(x1, y1, x2, y2, u1, v1, u2, v2, endpoint_intersects=True) \
+                    #   and not self.is_connected_by_junction(line1, line2,
+                    #                                         tolerance=self.constraint_use_topology_snap_precision):
+                    # old code: skipping if segments crossed but joined by infer topology, which means they "slightly"
+                    # close and we consider them as not crossing in infer_topology and we want to continue with
+                    # that decision
+                    if geotool.crosses(x1, y1, x2, y2, u1, v1, u2, v2, endpoint_intersects=True):
                         if debug:
                             print "INTERSECTION:", cs.segments[cseg1.idx], cs.segments[cseg2.idx]
                         intersections.append((cseg1, cseg2))
@@ -1039,8 +788,13 @@ class ChainDB(object):
         geom = self.geometries[geom_idx]
 
         # Check if line is a closed chain
-        first_point = self.chains[chains[0]].points[0]
-        last_point = self.chains[chains[-1]].points[-1]
+        try:
+            first_point = self.chains[chains[0]].points[0]
+            last_point = self.chains[chains[-1]].points[-1]
+        except (KeyError, AttributeError):
+            print "Warning: Could not find any point for geometry(geom_idx={}) with no points".format(geom_idx)
+            return
+
         closed_chain = (first_point[P_COORD] == last_point[P_COORD])
 
         # Get all points of the ring
@@ -1273,6 +1027,7 @@ class ChainDB(object):
             else:
                 # Parent points to chain c as a children. But geom_idx is not in chain c parents. Impossible
                 print "chain error: geomidx=%s, chain=%s" % (geom_idx, c)
+                print chain.parents, geom_idx
                 raise Exception("Inconsistency: Parent's children is not in children parents".format(gtype))
 
             if direction == DIRECTION_REVERSE:

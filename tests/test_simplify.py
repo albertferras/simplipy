@@ -50,7 +50,7 @@ class TestSimplifier(TestCaseGeometry):
             except AssertionError:
                 print "Failed on geometry id={}".format(gid)
                 raise
-        #self.save_shapefile(data_path('test'), 'simp', simp_geometries)
+        # self.save_shapefile(data_path('test'), 'simp', simp_geometries)
         if constraints.get('prevent_shape_removal') is True:
             self.assertEquals(len(geometries_removed), 0,
                               msg="Expected 0 geometries removed, but disapparead: {}"
@@ -80,7 +80,7 @@ class TestSimplifier(TestCaseGeometry):
 
         simplifier = douglaspeucker
         simplifier_params = dict(epsilon=0.1)
-        #self.save_shapefile(data_path('test'), 'orig', geometries)
+        # self.save_shapefile(data_path('test'), 'orig', geometries)
         for mode in ["Expand", "Contract"]:
             print "*"*100, mode
             constraints = dict(expandcontract=mode,
@@ -183,7 +183,7 @@ class TestSimplifier(TestCaseGeometry):
     def test_repair_intersections_with_topology(self):
         geometries = load_shapefile(data_path('naturalearth_nations/ne_10m_admin_0_countries.shp'),
                                     geom_key='ADM0_A3')
-        geometries = {i:g for i,g in geometries.iteritems() if i.split(":")[-1] in ["FRA", "ESP", "AND"]}
+        geometries = {i: wkb for i, wkb in geometries.iteritems() if i.split(":")[-1] in ["FRA", "ESP", "AND"]}
 
         simplifier = douglaspeucker
         simplifier_params = dict(epsilon=0.1)

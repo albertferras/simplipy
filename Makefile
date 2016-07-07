@@ -64,12 +64,14 @@ deploy: derase compile
 	cp -vf $(EXTRAS) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
 	mkdir $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)/$(PYPACKAGEDIR)
 	cp -rvf $(PYPACKAGEDIR)/*.py $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)/$(PYPACKAGEDIR)
+	cp -rvf $(PYPACKAGEDIR)/*.so $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)/$(PYPACKAGEDIR)
 	python rename_module.py $(PYPACKAGEDIR) $(PYPACKAGEDIR)_qgis $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
 
 # The dclean target removes compiled python files from plugin directory
 # also delets any .svn entry
 dclean:
 	find $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME) -iname "*.pyc" -delete
+	find $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME) -iname "*.so" -delete
 	find $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME) -iname ".svn" -prune -exec rm -Rf {} \;
 
 # The derase deletes deployed plugin
