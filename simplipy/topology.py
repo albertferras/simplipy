@@ -61,6 +61,7 @@ def snap_coordinates(chaindb, snap_distance):
     # from area X with points of areas X, F, G, H and I.
     # Note that, for example, points between areas A and X will be done when the center area is A (A=X' and E=I')
     chains = chaindb.chains
+    for grid_id, chains_points in grid.iteritems():
         gx, gy = grid_id
         # X-X points
         for (chain_id1, p_idx1), (chain_id2, p_idx2) in itertools.combinations(chains_points, 2):
