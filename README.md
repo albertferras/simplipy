@@ -1,5 +1,6 @@
-# Important notice: There is a bug in which, in some edge cases, SimpliPy crashes. The more geometries you try to simplify, the more likely you get to the issue.
+## Important notice: There is a bug in which, in some edge cases, SimpliPy crashes. The more geometries you try to simplify, the more likely you get to the issue.
 The fix for this requires a big refactor on the core of the library. Unfortunately I'm not motivated enough to do this big change. This project can be treated as unmaintained and will unlikely receive any update.
+
 
 SimpliPy - QGIS plugin and Python module to simplify geometries
 =============
