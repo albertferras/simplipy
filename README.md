@@ -1,6 +1,8 @@
 ## Important notice: There is a bug in which, in some edge cases, SimpliPy crashes. The more geometries you try to simplify, the more likely you get to the issue.
 The fix for this requires a big refactor on the core of the library. Unfortunately I'm not motivated enough to do this big change. This project can be treated as unmaintained and will unlikely receive any update.
 
+The problem is in `https://github.com/albertferras/simplipy/blob/master/afcsimplifier/simplifier.py#L447`, where snap points does not produce a correct output and the code which runs after that crashes because pre-conditions are not met.
+
 
 SimpliPy - QGIS plugin and Python module to simplify geometries
 =============
